@@ -18,16 +18,19 @@ const NAV: Record<string, { href: string; label: string }[]> = {
     { href: "/inventory", label: "Inventory" },
     { href: "/returns/due", label: "Returns due" },
     { href: "/returns", label: "My returns" },
+    { href: "/receipts", label: "Compliance receipts" },
   ],
   DISTRIBUTOR: [
     { href: "/distributor", label: "Inbound returns" },
     { href: "/distributor/leakage", label: "Leakage ledger" },
+    { href: "/receipts", label: "Compliance receipts" },
   ],
   MANUFACTURER: [
     { href: "/manufacturer", label: "Batch registry" },
     { href: "/manufacturer/returns", label: "Inbound returns" },
     { href: "/manufacturer/certificates", label: "Certificates" },
     { href: "/manufacturer/alerts", label: "Alerts on my batches" },
+    { href: "/receipts", label: "Compliance receipts" },
   ],
   FACILITY: [{ href: "/facility", label: "Inbound disposals" }],
   REGULATOR: [
@@ -36,6 +39,8 @@ const NAV: Record<string, { href: string; label: string }[]> = {
     { href: "/regulator/leakage", label: "Leakage by org" },
     { href: "/regulator/overdue", label: "Overdue returns" },
     { href: "/regulator/batches", label: "Batch lookup" },
+    { href: "/receipts", label: "Compliance receipts" },
+    { href: "/regulator/cdsco", label: "CDSCO reference data" },
   ],
 };
 

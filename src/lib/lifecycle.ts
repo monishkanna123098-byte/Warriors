@@ -8,6 +8,7 @@
 
 import type { Tx } from "./db";
 import { appendAudit } from "./audit";
+import { buildBillPayload, BillStatus, type BillInvariantOutcome } from "./billing";
 import { AppError, badRequest, conflict } from "./errors";
 import {
   checkCertificateCeiling,
@@ -78,6 +79,9 @@ export interface TransitionResult {
   certificateId?: string;
   disposalRequestId?: string;
   leakageRecordId?: string;
+  /** Compliance receipt raised by this transition. */
+  billStatus?: BillStatus;
+  anomalyNote?: string | null;
 }
 
 /** min() over the confirmed quantities present so far; nulls are "not yet known". */
@@ -151,6 +155,18 @@ export async function transition(
 
   const alerts: TransitionResult["alerts"] = [];
   const batch = ret.batch;
+  // Quantity the receipt is about: whatever this leg actually moved, falling
+  // back to what is known so far on the return.
+  const quantityInPayload =
+    "declaredQty" in payload
+      ? payload.declaredQty
+      : "receivedQty" in payload
+        ? payload.receivedQty
+        : "qty" in payload
+          ? payload.qty
+          : null;
+  const billableQty =
+    quantityInPayload ?? ret.confirmedQty ?? ret.declaredQty ?? 0;
   let registryStatus = batch.registryStatus as RegistryStatus;
   let confirmedQty = ret.confirmedQty;
   let certificateId: string | undefined;
@@ -567,7 +583,7 @@ export async function transition(
       ? from // partial certificate: the return stays where it was
       : targetState;
 
-  await appendAudit(tx, {
+  const audit = await appendAudit(tx, {
     entityType: "ReturnRequest",
     entityId: returnId,
     action: `TRANSITION:${from}->${finalState}`,
@@ -588,6 +604,30 @@ export async function transition(
     } as never,
   });
 
+  // Compliance receipt, written inside the SAME transaction as the audit event
+  // it references. A rolled-back transition therefore leaves neither — the
+  // receipt for a REJECTED transition is written separately by
+  // recordRejectionBill() below, because a rejection has no surviving
+  // transaction to write into.
+  const bill = buildBillPayload(
+    { batchId: ret.batchId, returnRequestId: returnId, quantity: billableQty },
+    {
+      alerts: alerts.map((a) => a.code),
+      expired: batch.expiryDate.getTime() < Date.now(),
+    },
+  );
+  await tx.bill.create({
+    data: {
+      returnRequestId: bill.returnRequestId,
+      batchId: bill.batchId,
+      quantity: bill.quantity,
+      status: bill.status,
+      anomalyCodes: bill.anomalyCodes,
+      anomalyNote: bill.anomalyNote,
+      auditEventId: audit.id,
+    },
+  });
+
   return {
     returnId,
     from,
@@ -598,7 +638,67 @@ export async function transition(
     certificateId,
     disposalRequestId,
     leakageRecordId,
+    billStatus: bill.status,
+    anomalyNote: bill.anomalyNote,
   };
+}
+
+/**
+ * Writes the receipt for a transition that was REFUSED.
+ *
+ * A refused transition throws, and the throw rolls its transaction back — which
+ * is what keeps "a rejected certificate leaves no ledger row" true. But the
+ * refusal itself is exactly the kind of event a compliance receipt exists to
+ * record, so it is written afterwards in a transaction of its own.
+ *
+ * This is a creation path only. It never touches the refused return's state or
+ * the batch's registry status, so lifecycle.ts remains the only mutator of those
+ * (CLAUDE.md rule 2) and nothing here re-decides anything (rule 1).
+ */
+export async function recordRejectionBill(
+  tx: Tx,
+  input: {
+    returnId: string;
+    batchId: string;
+    quantity: number;
+    code: AlertCode;
+    actor: Actor;
+    detail?: Record<string, unknown>;
+  },
+): Promise<void> {
+  const batch = await tx.batch.findUnique({ where: { id: input.batchId } });
+  if (!batch) return;
+
+  const audit = await appendAudit(tx, {
+    entityType: "ReturnRequest",
+    entityId: input.returnId,
+    action: `REFUSED:${input.code}`,
+    actorUserId: input.actor.userId,
+    actorOrgId: input.actor.orgId,
+    payload: {
+      returnId: input.returnId,
+      batchId: input.batchId,
+      refusedWith: input.code,
+      detail: input.detail ?? {},
+    } as never,
+  });
+
+  const bill = buildBillPayload(
+    { batchId: input.batchId, returnRequestId: input.returnId, quantity: input.quantity },
+    { alerts: [input.code], expired: batch.expiryDate.getTime() < Date.now() },
+  );
+
+  await tx.bill.create({
+    data: {
+      returnRequestId: bill.returnRequestId,
+      batchId: bill.batchId,
+      quantity: bill.quantity,
+      status: bill.status,
+      anomalyCodes: bill.anomalyCodes,
+      anomalyNote: bill.anomalyNote,
+      auditEventId: audit.id,
+    },
+  });
 }
 
 /**

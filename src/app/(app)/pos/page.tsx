@@ -31,6 +31,8 @@ interface ScanResponse {
     registryStatus: string;
   } | null;
   secondaryAlerts: { code: string; severity: string }[];
+  /** Compliance receipt for this decision. EXPIRED hard-blocks the terminal. */
+  bill: { status: "OK" | "EXPIRED"; anomalyNote: string | null } | null;
 }
 
 export default function PosPage() {
@@ -68,6 +70,7 @@ export default function PosPage() {
           serverTs: new Date().toISOString(),
           batch: null,
           secondaryAlerts: [],
+          bill: null,
         });
       }
     } finally {
@@ -76,6 +79,19 @@ export default function PosPage() {
   }
 
   const blocked = result?.verdict === "BLOCK";
+
+  // A receipt marked EXPIRED means this stock is not acceptable. The terminal is
+  // then hard-blocked: the scan form is removed from the page entirely, and no
+  // control anywhere continues with this item. There is no override for any
+  // role — not in the UI, and not on any API route.
+  const hardBlocked = result?.bill?.status === "EXPIRED";
+
+  function clearForNextItem() {
+    setResult(null);
+    setBatchNo("");
+    setQty("1");
+    setClaimedInvoiceDate("");
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -147,6 +163,75 @@ export default function PosPage() {
         </div>
       ) : null}
 
+      {result?.bill ? (
+        <Card
+          className={cn(
+            "border-2",
+            result.bill.status === "EXPIRED" ? "border-red-400 bg-red-50" : "border-emerald-300 bg-emerald-50",
+          )}
+        >
+          <CardHeader
+            title="Compliance receipt"
+            subtitle="A permanent record of this decision. It is never edited or reissued."
+            right={
+              <Chip tone={result.bill.status === "EXPIRED" ? "red" : "green"}>
+                {result.bill.status === "EXPIRED" ? "NOT ACCEPTABLE" : "OK"}
+              </Chip>
+            }
+          />
+          <div className="px-5 py-5">
+            {result.bill.status === "EXPIRED" ? (
+              <>
+                <p className="text-2xl font-bold tracking-tight text-red-800">
+                  EXPIRED — {result.bill.anomalyNote}
+                </p>
+                <dl className="mt-5 space-y-3 border-t border-red-200 pt-4 text-sm">
+                  <div>
+                    <dt className="font-semibold text-red-900">What happened</dt>
+                    <dd className="text-red-800">
+                      This item was checked against the manufacturer&apos;s issued register and the
+                      movement ledger, and refused.
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="font-semibold text-red-900">Why it happened</dt>
+                    <dd className="text-red-800">{result.bill.anomalyNote}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-semibold text-red-900">What happens next</dt>
+                    <dd className="text-red-800">
+                      Set this stock aside — do not dispense or sell it. The refusal is now a
+                      permanent receipt, visible to the regulator and to anyone who looks this batch
+                      up publicly. It cannot be reversed by any member of staff.
+                    </dd>
+                  </div>
+                </dl>
+                <p className="mt-5 rounded-md bg-red-100 px-4 py-2.5 text-sm font-semibold text-red-900">
+                  There is no override. No manager, pharmacist or administrator can continue with
+                  this item.
+                </p>
+              </>
+            ) : (
+              <p className="text-lg font-medium text-emerald-900">
+                No compliance findings. This batch is in date and within the quantity its
+                manufacturer released.
+              </p>
+            )}
+          </div>
+        </Card>
+      ) : null}
+
+      {hardBlocked ? (
+        <Card className="border-slate-300 p-5">
+          <p className="text-sm text-slate-700">
+            The terminal is blocked on this item. You may start a different one — the refusal above
+            stays on the record either way.
+          </p>
+          <Button variant="ghost" className="mt-3" onClick={clearForNextItem}>
+            Clear and scan a different item
+          </Button>
+        </Card>
+      ) : (
       <Card>
         <CardHeader title="Scan" subtitle="Batch numbers collide across manufacturers — both fields are required." />
         <form onSubmit={scan} className="grid gap-4 px-5 py-5 md:grid-cols-2">
@@ -208,6 +293,7 @@ export default function PosPage() {
           </div>
         </form>
       </Card>
+      )}
     </div>
   );
 }

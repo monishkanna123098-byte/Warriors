@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import { ok, parseBody, toResponse, withIdempotency } from "@/lib/http";
 import { decideScan } from "@/lib/pos";
+import { appendAudit } from "@/lib/audit";
+import { buildBillPayload } from "@/lib/billing";
 import { ScanContext, ScanVerdict } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -82,7 +84,56 @@ export async function POST(req: Request) {
         });
       }
 
-      return d;
+      // Compliance receipt for this decision, in the same transaction as the
+      // audit event that proves it. Raised for BOTH outcomes: an ALLOW produces
+      // an OK receipt, a BLOCK produces an EXPIRED one. A POS decision has no
+      // return behind it, so returnRequestId is null.
+      let billStatus: string | null = null;
+      let anomalyNote: string | null = null;
+      if (d.batch) {
+        const audit = await appendAudit(tx, {
+          entityType: "PosScan",
+          entityId: d.batch.id,
+          action: `SCAN:${d.verdict}${d.alertCode ? `:${d.alertCode}` : ""}`,
+          actorUserId: session.userId,
+          actorOrgId: session.orgId,
+          payload: {
+            batchId: d.batch.id,
+            batchNo: d.batch.batchNo,
+            context: body.context,
+            qty: body.qty,
+            verdict: d.verdict,
+            alertCode: d.alertCode,
+          } as never,
+        });
+
+        const bill = buildBillPayload(
+          { batchId: d.batch.id, returnRequestId: null, quantity: body.qty },
+          {
+            alerts: [
+              ...(d.alertCode ? [d.alertCode] : []),
+              ...d.secondaryAlerts.map((a) => a.code),
+            ],
+            expired: new Date(d.batch.expiryDate).getTime() < serverTs.getTime(),
+          },
+        );
+
+        await tx.bill.create({
+          data: {
+            returnRequestId: null,
+            batchId: bill.batchId,
+            quantity: bill.quantity,
+            status: bill.status,
+            anomalyCodes: bill.anomalyCodes,
+            anomalyNote: bill.anomalyNote,
+            auditEventId: audit.id,
+          },
+        });
+        billStatus = bill.status;
+        anomalyNote = bill.anomalyNote;
+      }
+
+      return { ...d, billStatus, anomalyNote };
     });
 
     const payload = {
@@ -92,6 +143,11 @@ export async function POST(req: Request) {
       message: decision.message,
       batch: decision.batch,
       secondaryAlerts: decision.secondaryAlerts,
+      // The compliance receipt. An EXPIRED receipt hard-blocks the terminal;
+      // there is no override, for any role.
+      bill: decision.billStatus
+        ? { status: decision.billStatus, anomalyNote: decision.anomalyNote }
+        : null,
       serverTs: serverTs.toISOString(),
     };
     await idem.record(200, payload);

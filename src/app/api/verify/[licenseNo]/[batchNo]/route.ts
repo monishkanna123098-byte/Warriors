@@ -6,6 +6,7 @@
 import { prisma } from "@/lib/db";
 import { clientIp, fail, ok, rateLimit, toResponse } from "@/lib/http";
 import { licenseCandidates } from "@/lib/license";
+import { checkNsqStatus } from "@/lib/cdsco";
 import { RegistryStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -49,7 +50,35 @@ export async function GET(
       });
     }
 
+    // Three separate signals, deliberately not merged into one status.
+    const latestBill = await prisma.bill.findFirst({
+      where: { batchId: batch.id },
+      orderBy: { generatedAt: "desc" },
+      select: { status: true, anomalyNote: true, anomalyCodes: true, generatedAt: true },
+    });
+    const nsq = checkNsqStatus(
+      batch.product.name,
+      batch.batchNo,
+      await prisma.nsqAlert.findMany({ where: { batchNo: batch.batchNo } }),
+    );
+
     const base = {
+      complianceReceipt: latestBill
+        ? {
+            status: latestBill.status,
+            anomalyNote: latestBill.anomalyNote,
+            anomalyCodes: latestBill.anomalyCodes,
+            generatedAt: latestBill.generatedAt.toISOString(),
+          }
+        : null,
+      cdscoNsq: {
+        flagged: nsq.flagged,
+        reason: nsq.reason,
+        dateFlagged: nsq.dateFlagged,
+        message: nsq.message,
+      },
+      signalsNote:
+        "Registry status, compliance receipt and CDSCO NSQ answer different questions and are reported separately.",
       licenseNo: batch.manufacturer.licenseNo,
       manufacturer: batch.manufacturer.name,
       batchNo: batch.batchNo,

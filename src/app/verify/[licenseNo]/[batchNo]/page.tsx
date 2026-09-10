@@ -5,6 +5,7 @@
 
 import { licenseCandidates } from "@/lib/license";
 import { prisma } from "@/lib/db";
+import { checkNsqStatus } from "@/lib/cdsco";
 import { RegistryStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -66,6 +67,29 @@ export default async function VerifyPage({
 
   const t = TONES[tone];
 
+  // Three DIFFERENT questions, answered separately and never merged:
+  //
+  //   the card above  — what does the manufacturer's register say about this batch?
+  //   the receipt     — what did OUR checks conclude the last time it was seen?
+  //   the CDSCO panel — has the REGULATOR flagged this batch on quality?
+  //
+  // A batch can be clean on one and damning on another. Collapsing them into a
+  // single verdict would destroy exactly the information that matters.
+  const bill = batch
+    ? await prisma.bill.findFirst({
+        where: { batchId: batch.id },
+        orderBy: { generatedAt: "desc" },
+      })
+    : null;
+
+  const nsq = batch
+    ? checkNsqStatus(
+        batch.product.name,
+        batch.batchNo,
+        await prisma.nsqAlert.findMany({ where: { batchNo: batch.batchNo } }),
+      )
+    : null;
+
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col px-4 py-8">
       <p className="text-center text-xs font-semibold uppercase tracking-widest text-slate-500">
@@ -99,6 +123,68 @@ export default async function VerifyPage({
           Searched for licence <span className="font-mono">{licenseNo}</span>.
         </div>
       )}
+
+      {bill ? (
+        <section
+          className={`mt-4 rounded-xl border-2 px-4 py-4 ${
+            bill.status === "EXPIRED" ? "border-red-300 bg-red-50" : "border-emerald-300 bg-emerald-50"
+          }`}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+              Last compliance check
+            </p>
+            <span
+              className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                bill.status === "EXPIRED" ? "bg-red-600 text-white" : "bg-emerald-600 text-white"
+              }`}
+            >
+              {bill.status === "EXPIRED" ? "NOT ACCEPTABLE" : "OK"}
+            </span>
+          </div>
+          <p
+            className={`mt-2 text-sm font-medium leading-relaxed ${
+              bill.status === "EXPIRED" ? "text-red-900" : "text-emerald-900"
+            }`}
+          >
+            {bill.anomalyNote ?? "No compliance findings were recorded against this batch."}
+          </p>
+          <p className="mt-2 text-xs text-slate-600">
+            Recorded {bill.generatedAt.toISOString().slice(0, 10)}. This receipt is permanent — it is
+            never edited or withdrawn.
+          </p>
+        </section>
+      ) : null}
+
+      {nsq ? (
+        <section
+          className={`mt-4 rounded-xl border-2 px-4 py-4 ${
+            nsq.flagged ? "border-amber-400 bg-amber-50" : "border-slate-200 bg-white"
+          }`}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+              CDSCO quality alert
+            </p>
+            <span
+              className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                nsq.flagged ? "bg-amber-600 text-white" : "bg-slate-200 text-slate-700"
+              }`}
+            >
+              {nsq.flagged ? "NSQ FLAGGED" : "NOT FLAGGED"}
+            </span>
+          </div>
+          <p
+            className={`mt-2 text-sm leading-relaxed ${nsq.flagged ? "font-medium text-amber-900" : "text-slate-600"}`}
+          >
+            {nsq.message}
+          </p>
+          <p className="mt-2 text-xs text-slate-600">
+            This is the drug regulator&apos;s own quality finding. It is a separate question from the
+            compliance check above, and one can be clear while the other is not.
+          </p>
+        </section>
+      ) : null}
 
       <p className="mt-6 text-center text-xs leading-relaxed text-slate-500">
         Checked against the manufacturer&apos;s issued batch registry at{" "}

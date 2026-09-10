@@ -157,6 +157,9 @@ async function main() {
   );
 
   // ---------------------------------------------------------------- A3
+  // Measured as a DELTA rather than an absolute, so the assertion survives the
+  // demo data seeded for the dashboards (which carries its own open leakage).
+  const unaccountedBefore = (await api(REG1, "/api/regulator/kpi")).body.unaccountedUnits;
   const a3 = await api(DIST, `/api/returns/${rid}/receive`, {
     method: "POST",
     body: JSON.stringify({ scannedBatchNo: "B-1001", receivedQty: 70, weightG: 52.5 }),
@@ -169,11 +172,13 @@ async function main() {
     a3.body.to === "DISTRIBUTOR_RECEIVED" &&
       a3.body.confirmedQty === 70 &&
       leak.body.records.some((r) => r.leakedQty === 30 && r.status === "OPEN") &&
-      kpi.body.unaccountedUnits === 30,
+      kpi.body.unaccountedUnits - unaccountedBefore === 30,
     {
       to: a3.body.to,
       confirmedQty: a3.body.confirmedQty,
-      unaccounted: kpi.body.unaccountedUnits,
+      unaccountedBefore,
+      unaccountedAfter: kpi.body.unaccountedUnits,
+      delta: kpi.body.unaccountedUnits - unaccountedBefore,
     },
   );
 
@@ -203,7 +208,9 @@ async function main() {
   );
 
   const inbound = await api(FAC1, "/api/disposals/inbound");
-  const dr = inbound.body.items?.[0];
+  // Must be the disposal for the return this run created. The facility also
+  // holds seeded historical disposals, and those sort earlier by scheduledDate.
+  const dr = inbound.body.items?.find((d) => d.returnId === rid);
   await api(FAC1, `/api/disposals/${dr.id}/receive`, { method: "POST" });
 
   // ---------------------------------------------------------------- A6
@@ -362,6 +369,166 @@ async function main() {
       billed: billedAfter?.health,
       firstScan: first.body.verdict,
     },
+  );
+
+  // ================================================================
+  // Billing / compliance receipts + CDSCO reference data
+  // ================================================================
+
+  // ---------------------------------------------------------------- B1
+  // B-1001 is DESTROYED by this point in the run, so a scan of it is refused
+  // and must leave an EXPIRED receipt behind.
+  const b1 = await scan(RETB, "MFG/TN/001", "B-1001", 1);
+  check(
+    "B1",
+    "a refused POS decision produces an EXPIRED compliance receipt with a plain-language reason",
+    b1.body.bill?.status === "EXPIRED" &&
+      typeof b1.body.bill?.anomalyNote === "string" &&
+      b1.body.bill.anomalyNote.length > 20,
+    { bill: b1.body.bill },
+  );
+
+  // ---------------------------------------------------------------- B2
+  const b2 = await scan(RETB, "MFG/TN/002", "B-1001", 1);
+  check(
+    "B2",
+    "an allowed POS decision produces an OK receipt (same batch number, different maker)",
+    b2.body.verdict === "ALLOW" && b2.body.bill?.status === "OK",
+    { verdict: b2.body.verdict, bill: b2.body.bill },
+  );
+
+  // ---------------------------------------------------------------- B3
+  const billsAll = await api(REG1, "/api/bills");
+  const billsExpired = await api(REG1, "/api/bills?status=EXPIRED");
+  check(
+    "B3",
+    "the dashboard feed surfaces flagged batches without opening individual returns",
+    billsAll.status === 200 &&
+      billsExpired.body.items.length > 0 &&
+      billsExpired.body.items.every((b) => b.status === "EXPIRED") &&
+      billsExpired.body.items.every((b) => b.anomalyNote),
+    { total: billsAll.body.total, expired: billsExpired.body.items.length },
+  );
+
+  // ---------------------------------------------------------------- B4
+  // No override path, for any role, through any verb on the bills resource.
+  const verbs = await Promise.all(
+    ["POST", "PATCH", "PUT", "DELETE"].map((m) =>
+      api(REG1, "/api/bills", { method: m, body: JSON.stringify({ status: "OK" }) }),
+    ),
+  );
+  const billId = billsExpired.body.items[0]?.id;
+  const targeted = await Promise.all(
+    ["PATCH", "PUT", "DELETE"].map((m) => api(REG1, `/api/bills/${billId}`, { method: m })),
+  );
+  check(
+    "B4",
+    "an EXPIRED receipt cannot be edited, deleted or overridden by any role or verb",
+    verbs.every((r) => r.status === 404 || r.status === 405) &&
+      targeted.every((r) => r.status === 404 || r.status === 405),
+    { collection: verbs.map((r) => r.status), item: targeted.map((r) => r.status) },
+  );
+
+  // ---------------------------------------------------------------- B5
+  const pubDestroyed = await api(null, "/api/verify/MFG-TN-001/B-1001");
+  check(
+    "B5",
+    "/verify exposes the EXPIRED receipt publicly, with no auth",
+    pubDestroyed.status === 200 &&
+      pubDestroyed.body.complianceReceipt?.status === "EXPIRED" &&
+      !!pubDestroyed.body.complianceReceipt?.anomalyNote,
+    { receipt: pubDestroyed.body.complianceReceipt },
+  );
+
+  // ---------------------------------------------------------------- B6
+  // P-7781 is the case that proves the signals are not merged: our own ledger
+  // and our own receipt both say this batch is fine, and CDSCO has recalled it
+  // on quality. A system that collapsed these into one status would have to
+  // throw one of those answers away.
+  const pubDiverge = await api(null, "/api/verify/MFG-TN-001/P-7781");
+  check(
+    "B6",
+    "/verify reports registry, compliance receipt and CDSCO NSQ separately — and they can disagree",
+    pubDiverge.status === 200 &&
+      pubDiverge.body.status === "CLEAN" &&
+      pubDiverge.body.complianceReceipt?.status === "OK" &&
+      pubDiverge.body.cdscoNsq?.flagged === true &&
+      typeof pubDiverge.body.signalsNote === "string",
+    {
+      registry: pubDiverge.body.status,
+      receipt: pubDiverge.body.complianceReceipt?.status,
+      nsq: pubDiverge.body.cdscoNsq?.flagged,
+    },
+  );
+
+  // ---------------------------------------------------------------- C1
+  const nsqHit = await api(null, "/api/cdsco/nsq-check?medicineName=Amoxicillin%20500mg&batchNo=B-1001");
+  const nsqMiss = await api(null, "/api/cdsco/nsq-check?medicineName=Amoxicillin%20500mg&batchNo=B-3003");
+  check(
+    "C1",
+    "CDSCO NSQ check answers matched and unmatched batches, unauthenticated",
+    nsqHit.status === 200 && nsqHit.body.flagged === true &&
+      nsqMiss.status === 200 && nsqMiss.body.flagged === false,
+    { hit: nsqHit.body.flagged, miss: nsqMiss.body.flagged },
+  );
+
+  // ---------------------------------------------------------------- C2
+  // The collision rule again: the same batch number under a different medicine
+  // must not inherit the recall.
+  const nsqCollide = await api(null, "/api/cdsco/nsq-check?medicineName=Metformin%20500mg&batchNo=B-1001");
+  check(
+    "C2",
+    "an NSQ recall does not leak across medicines sharing a batch number",
+    nsqCollide.body.flagged === false,
+    { flagged: nsqCollide.body.flagged },
+  );
+
+  // ---------------------------------------------------------------- C3
+  const licActive = await api(REG1, "/api/cdsco/license-check?licenseNo=DL/TN/4401");
+  const licSusp = await api(REG1, "/api/cdsco/license-check?licenseNo=DL/TN/4403");
+  const licNone = await api(REG1, "/api/cdsco/license-check?licenseNo=DL/TN/0000");
+  check(
+    "C3",
+    "CDSCO licence check distinguishes ACTIVE, SUSPENDED and unregistered",
+    licActive.body.active === true &&
+      licSusp.body.found === true && licSusp.body.active === false &&
+      licNone.body.found === false && licNone.body.active === false,
+    { active: licActive.body.active, susp: licSusp.body.active, none: licNone.body.found },
+  );
+
+  // ---------------------------------------------------------------- C4
+  const cdscoAll = await api(REG1, "/api/cdsco");
+  check(
+    "C4",
+    "the regulator sees imported CDSCO data and which recalled batches are in this chain",
+    cdscoAll.status === 200 &&
+      cdscoAll.body.nsq.total === 10 &&
+      cdscoAll.body.entities.total === 10 &&
+      cdscoAll.body.nsq.matchedInRccp > 0 &&
+      cdscoAll.body.entities.notActive > 0,
+    {
+      nsq: cdscoAll.body.nsq?.total,
+      entities: cdscoAll.body.entities?.total,
+      matched: cdscoAll.body.nsq?.matchedInRccp,
+    },
+  );
+
+  // ---------------------------------------------------------------- C5
+  check(
+    "C5",
+    "CDSCO reference data is not writable through the API",
+    (await api(REG1, "/api/cdsco", { method: "POST", body: "{}" })).status === 405 ||
+      (await api(REG1, "/api/cdsco", { method: "POST", body: "{}" })).status === 404,
+    {},
+  );
+
+  // ---------------------------------------------------------------- B7
+  const auditAfter = await api(REG1, "/api/audit/verify");
+  check(
+    "B7",
+    "the audit chain stays intact with receipts appended to it",
+    auditAfter.body.valid === true,
+    auditAfter.body,
   );
 
   console.log("=".repeat(60));

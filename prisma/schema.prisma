@@ -89,6 +89,16 @@ enum LeakageStatus {
   WRITTEN_OFF
 }
 
+enum BillStatus {
+  OK
+  EXPIRED
+}
+
+enum LicensedEntityType {
+  RETAILER
+  WHOLESALER
+}
+
 enum AlertCode {
   UNKNOWN_BATCH
   RESURRECTED_BATCH
@@ -165,6 +175,7 @@ model Batch {
   returns      ReturnRequest[]
   certificates DestructionCertificate[]
   alerts       Alert[]
+  bills        Bill[]
 
   @@unique([manufacturerId, batchNo])
   @@index([expiryDate])
@@ -235,6 +246,7 @@ model ReturnRequest {
 
   leakage   LeakageRecord[]
   disposals DisposalRequest[]
+  bills     Bill[]
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
 
@@ -331,8 +343,86 @@ model AuditEvent {
   prevHash    String?
   hash        String
   serverTs    DateTime @default(now())
+  bill        Bill?
 
   @@index([entityType, entityId])
+}
+
+/// COMPLIANCE RECEIPT — not an invoice. It has no price, amount or currency, and
+/// never will. It documents, per batch, whether that stock is OK or EXPIRED and
+/// why, at the moment a decision was made.
+///
+/// PERMANENT. Created only, never updated and never deleted, by any code path.
+/// A correction is a NEW Bill plus a new AuditEvent, never a mutation of the
+/// original — the same discipline BatchLedger follows.
+///
+/// A Bill never decides anything. It is generated FROM an invariant/lifecycle
+/// outcome and cannot influence one (CLAUDE.md rule 1).
+model Bill {
+  id String @id @default(cuid())
+
+  /// Null for a bill raised by a POS decision, which is not tied to a return.
+  /// Set for every bill raised by a return lifecycle transition.
+  returnRequestId String?
+  returnRequest   ReturnRequest? @relation(fields: [returnRequestId], references: [id])
+
+  batchId String
+  batch   Batch  @relation(fields: [batchId], references: [id])
+
+  quantity    Int
+  generatedAt DateTime   @default(now())
+  status      BillStatus
+
+  /// Invariant identifiers behind the status, e.g. ["I1"], ["I2"],
+  /// ["REUSED_DESTROYED"]. Empty for an OK bill.
+  anomalyCodes String[]
+
+  /// Plain-language explanation shown to staff and to the public on /verify.
+  anomalyNote String?
+
+  /// One bill per audit event — the audit row is what makes the bill provable.
+  auditEventId BigInt     @unique
+  auditEvent   AuditEvent @relation(fields: [auditEventId], references: [id])
+
+  @@index([batchId, generatedAt])
+  @@index([status, generatedAt])
+}
+
+/// CDSCO Not-of-Standard-Quality alert. EXTERNAL ground truth, import-only:
+/// nothing in the app writes here except scripts/import-cdsco.mjs.
+///
+/// This is a SEPARATE signal from Bill status. A batch can be OK in RCCP's own
+/// ledger and still be CDSCO-recalled on quality, or vice versa. The two answer
+/// different questions and are never merged into one status.
+model NsqAlert {
+  id           String   @id @default(cuid())
+  medicineName String
+  batchNo      String
+  dateFlagged  DateTime
+  reason       String
+  source       String   @default("CDSCO")
+  importedAt   DateTime @default(now())
+
+  /// Upsert key. Deliberately NOT batchNo alone: batch numbers collide across
+  /// manufacturers, which is the premise the whole system is built on
+  /// (CLAUDE.md rule 6). Keying on batchNo alone would let one maker's recall
+  /// silently overwrite another's.
+  @@unique([medicineName, batchNo])
+  @@index([batchNo])
+}
+
+/// CDSCO licensed-entity register. Import-only, as above.
+model LicensedEntity {
+  id         String             @id @default(cuid())
+  name       String
+  licenseNo  String             @unique
+  type       LicensedEntityType
+  state      String
+  /// As published by CDSCO: ACTIVE, SUSPENDED, EXPIRED, ...
+  status     String
+  importedAt DateTime           @default(now())
+
+  @@index([status])
 }
 
 model IdempotencyKey {

@@ -4,7 +4,14 @@
 import { prisma } from "@/lib/db";
 import { forbidden, notFound } from "@/lib/errors";
 import { ok, toResponse, withIdempotency } from "@/lib/http";
-import { transition, type Actor, type TransitionPayload } from "@/lib/lifecycle";
+import {
+  recordRejectionBill,
+  transition,
+  type Actor,
+  type TransitionPayload,
+} from "@/lib/lifecycle";
+import { AppError } from "@/lib/errors";
+import { AlertCode } from "@/lib/types";
 import type { ReturnState } from "@/lib/types";
 import type { SessionClaims } from "@/lib/auth";
 
@@ -44,9 +51,33 @@ export async function runTransition(args: {
   if (idem.replay) return idem.replay;
 
   const actor: Actor = { userId: session.userId, orgId: session.orgId, role: session.role };
-  const result = await prisma.$transaction((tx) =>
-    transition(returnId, targetState, actor, payload, tx),
-  );
+
+  let result;
+  try {
+    result = await prisma.$transaction((tx) =>
+      transition(returnId, targetState, actor, payload, tx),
+    );
+  } catch (err) {
+    // A refused transition rolled its transaction back, so the refusal has no
+    // surviving record. Write the compliance receipt for it in a transaction of
+    // its own, then re-throw so the caller still sees the refusal.
+    if (err instanceof AppError && err.code in AlertCode) {
+      await prisma
+        .$transaction((tx) =>
+          recordRejectionBill(tx, {
+            returnId,
+            batchId: existing.batchId,
+            quantity: existing.declaredQty ?? 0,
+            code: err.code as AlertCode,
+            actor,
+            detail: err.detail,
+          }),
+        )
+        // The receipt must never mask the original refusal.
+        .catch((e) => console.error("[bill] failed to record rejection receipt", e));
+    }
+    throw err;
+  }
 
   await idem.record(200, result);
   return ok(result);

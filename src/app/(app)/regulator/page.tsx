@@ -10,6 +10,8 @@ interface KpiData {
   unaccountedUnits: number;
   overdueReturns: number;
   batchesDestroyed: number;
+  expiredReceipts: number;
+  nsqAlerts: number;
 }
 
 function Kpi({ label, value, href, tone }: { label: string; value: number; href: string; tone: string }) {
@@ -51,6 +53,18 @@ export default function RegulatorPage() {
           />
           <Kpi label="Overdue returns" value={data.overdueReturns} href="/regulator/overdue" tone="" />
           <Kpi label="Batches destroyed" value={data.batchesDestroyed} href="/regulator/batches" tone="" />
+          <Kpi
+            label="Refused — compliance receipts"
+            value={data.expiredReceipts}
+            href="/receipts"
+            tone={data.expiredReceipts > 0 ? "border-red-300 bg-red-50" : ""}
+          />
+          <Kpi
+            label="CDSCO quality alerts"
+            value={data.nsqAlerts}
+            href="/regulator/cdsco"
+            tone={data.nsqAlerts > 0 ? "border-amber-300 bg-amber-50" : ""}
+          />
         </div>
       )}
 

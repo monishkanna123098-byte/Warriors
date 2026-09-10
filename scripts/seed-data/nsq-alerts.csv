@@ -1,0 +1,11 @@
+medicineName,batchNo,dateFlagged,reason,source
+Amoxicillin 500mg,B-1001,2026-07-14,Dissolution below pharmacopoeial limit,CDSCO
+Amoxicillin 500mg,B-4410,2026-06-02,Assay 88.2% of label claim,CDSCO
+Paracetamol 650mg,P-7781,2026-08-21,Description — mottled tablets,CDSCO
+Metformin 500mg,M-3320,2026-05-09,Related substances above limit,CDSCO
+Cetirizine 10mg,C-9004,2026-08-30,Uniformity of dosage units failed,CDSCO
+Azithromycin 250mg,AZ-1150,2026-04-18,Water content out of specification,CDSCO
+Pantoprazole 40mg,PN-6612,2026-07-29,Disintegration time exceeded,CDSCO
+Ibuprofen 400mg,IB-2245,2026-03-11,Assay 91.4% of label claim,CDSCO
+Amlodipine 5mg,AM-8830,2026-09-01,Identification test failed,CDSCO
+Ranitidine 150mg,RN-5507,2026-02-26,Impurity above permitted daily exposure,CDSCO

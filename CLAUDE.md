@@ -42,6 +42,28 @@ npm run test
    the return pipeline.
 10. Do not add: blockchain, ML or anomaly models, OCR, WebSockets, a message queue, or
     any auth provider beyond the JWT cookie. If a task seems to need one, stop and ask.
+11. `src/lib/billing.ts` holds the compliance-receipt logic. Bill records are generated
+    from invariant/lifecycle outcomes, are permanent, and never decide or override them.
+    A Bill is created and never updated or deleted, by any code path, ever — a correction
+    is a new Bill and a new `AuditEvent`, never a mutation of the original. There is no
+    override for an EXPIRED receipt, for any role, in the UI or on any route.
+12. `src/lib/cdsco.ts` is a read-only reference layer over externally imported CDSCO data.
+    It never writes to `Bill`, `ReturnRequest`, `Batch` or `BatchLedger`, and it never
+    changes how `invariants.ts` decides anything. CDSCO NSQ status and this system's own
+    OK/EXPIRED receipt answer different questions and are never merged into one status.
+
+## Architecture
+
+```
+src/lib/invariants.ts   the six invariants, pure, no DB access — the only place rules live
+src/lib/lifecycle.ts    the ONLY mutator of ReturnRequest.state / Batch.registryStatus
+src/lib/pos.ts          the §5.6 decision function, fixed rule order
+src/lib/billing.ts      compliance receipts, pure — reads an outcome, never decides one
+src/lib/cdsco.ts        CDSCO reference lookups, pure, read-only external ground truth
+src/lib/ledger.ts       every balance the invariants read, as SUMs over BatchLedger
+src/lib/audit.ts        the global hash chain and its verification walk
+scripts/import-cdsco.mjs  the only writer to NsqAlert / LicensedEntity
+```
 
 ## Style
 

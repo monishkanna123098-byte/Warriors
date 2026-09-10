@@ -58,7 +58,12 @@ export interface AppendAuditInput {
  * concurrency that does not arise; under real load this needs a serialisable
  * isolation level or an advisory lock on the chain tip. Noted, not solved.
  */
-export async function appendAudit(tx: Tx, input: AppendAuditInput): Promise<string> {
+export interface AppendedAudit {
+  id: bigint;
+  hash: string;
+}
+
+export async function appendAudit(tx: Tx, input: AppendAuditInput): Promise<AppendedAudit> {
   const prev = await tx.auditEvent.findFirst({
     orderBy: { id: "desc" },
     select: { hash: true },
@@ -70,7 +75,7 @@ export async function appendAudit(tx: Tx, input: AppendAuditInput): Promise<stri
 
   const hash = computeHash({ payload: input.payload, actorUserId, serverTs, prevHash });
 
-  await tx.auditEvent.create({
+  const created = await tx.auditEvent.create({
     data: {
       entityType: input.entityType,
       entityId: input.entityId,
@@ -82,9 +87,10 @@ export async function appendAudit(tx: Tx, input: AppendAuditInput): Promise<stri
       hash,
       serverTs,
     },
+    select: { id: true },
   });
 
-  return hash;
+  return { id: created.id, hash };
 }
 
 export interface ChainVerification {
