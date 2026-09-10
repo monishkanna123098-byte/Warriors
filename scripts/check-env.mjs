@@ -8,6 +8,19 @@
 const problems = [];
 const warnings = [];
 
+// Which Vercel environment this build is running as. A variable ticked only for
+// Production resolves to an EMPTY STRING in a Preview build rather than raising
+// anything, so the environment matters as much as the value and belongs in the
+// output either way.
+const vercelEnv = process.env.VERCEL_ENV ?? null;
+const gitRef = process.env.VERCEL_GIT_COMMIT_REF ?? null;
+if (vercelEnv) {
+  console.log(
+    `Checking environment variables for VERCEL_ENV=${vercelEnv}` +
+      (gitRef ? ` (branch ${gitRef})` : ""),
+  );
+}
+
 const get = (k) => (process.env[k] ?? "").trim();
 
 function require_(key, hint) {
@@ -75,9 +88,20 @@ if (problems.length > 0) {
     console.error(`  ✗ ${p.key} ${p.why}`);
     console.error(`     ${p.hint}\n`);
   }
-  console.error("Set these in Vercel → Settings → Environment Variables, for every");
-  console.error("environment you deploy (Production, Preview, Development), then");
-  console.error("redeploy. Full guidance: docs/DEPLOY.md");
+  if (vercelEnv) {
+    console.error(`This build ran as VERCEL_ENV=${vercelEnv}.`);
+    console.error("");
+    console.error("A variable that HAS a value but is not ticked for this environment");
+    console.error(`resolves to an empty string here. Before re-entering values, open each`);
+    console.error(`variable above and confirm "${vercelEnv}" is among its checked`);
+    console.error("environments — the dashboard list shows the variable as set either way.");
+  } else {
+    console.error("Set these in Vercel → Settings → Environment Variables, for every");
+    console.error("environment you deploy (Production, Preview, Development), then");
+    console.error("redeploy.");
+  }
+  console.error("");
+  console.error("Full guidance: docs/DEPLOY.md");
   console.error("─".repeat(68) + "\n");
   process.exit(1);
 }
