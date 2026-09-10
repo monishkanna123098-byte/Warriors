@@ -1,0 +1,340 @@
+// RCCP — schema per docs/SPEC.md §2.
+// Canonical enums are docs/SPEC.md §1. Never invent a variant.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrgType {
+  RETAILER
+  DISTRIBUTOR
+  MANUFACTURER
+  FACILITY
+  REGULATOR
+}
+
+enum Role {
+  RETAILER
+  DISTRIBUTOR
+  MANUFACTURER
+  FACILITY
+  REGULATOR
+}
+
+enum RegistryStatus {
+  CLEAN
+  IN_RETURN_PIPELINE
+  DESTROYED
+}
+
+enum InventoryStatus {
+  ACTIVE
+  QUARANTINED
+  RETURNED
+}
+
+enum ReturnState {
+  RETURN_DUE
+  INITIATED
+  PICKUP_ASSIGNED
+  DISTRIBUTOR_RECEIVED
+  MANUFACTURER_RECEIVED
+  DISPOSAL_SCHEDULED
+  FACILITY_RECEIVED
+  CERTIFIED_DESTROYED
+}
+
+enum LedgerEvent {
+  ISSUED
+  SUPPLIED
+  BILLED
+  RETURN_INITIATED
+  RECEIVED
+  LEAKED
+  DESTROYED
+}
+
+enum ScanContext {
+  SALE
+  RETURN_INTAKE
+  VERIFY
+}
+
+enum ScanVerdict {
+  ALLOW
+  BLOCK
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum LeakageStatus {
+  OPEN
+  ACKNOWLEDGED
+  WRITTEN_OFF
+}
+
+enum AlertCode {
+  UNKNOWN_BATCH
+  RESURRECTED_BATCH
+  EXPIRED_SALE
+  IN_PIPELINE_SALE
+  QUANTITY_BREACH
+  DOUBLE_RETURN
+  LEAKAGE
+  WEIGHT_MISMATCH
+  BACKDATED_INVOICE
+  CERTIFICATE_OVER_ALLOCATION
+}
+
+model Organization {
+  id                  String         @id @default(cuid())
+  name                String
+  type                OrgType
+  licenseNo           String         @unique
+  stateCode           String
+  district            String
+  mappedDistributorId String?
+  mappedDistributor   Organization?  @relation("RetailerDist", fields: [mappedDistributorId], references: [id])
+  retailers           Organization[] @relation("RetailerDist")
+
+  users             User[]
+  products          Product[]       @relation("MfgProducts")
+  batches           Batch[]         @relation("MfgBatches")
+  inventory         Inventory[]
+  ledger            BatchLedger[]
+  returnsAsRetailer ReturnRequest[] @relation("RetRet")
+  returnsAsDistrib  ReturnRequest[] @relation("RetDist")
+  returnsAsMfg      ReturnRequest[] @relation("RetMfg")
+  createdAt         DateTime        @default(now())
+}
+
+model User {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  passwordHash   String
+  role           Role
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+}
+
+model Product {
+  id             String       @id @default(cuid())
+  name           String
+  form           String
+  manufacturerId String
+  manufacturer   Organization @relation("MfgProducts", fields: [manufacturerId], references: [id])
+  unitWeightG    Float        @default(0.75)
+  batches        Batch[]
+}
+
+/// Surrogate id + composite unique. Do NOT use a composite primary key:
+/// batch numbers are manufacturer-assigned and collide across manufacturers,
+/// so (manufacturerId, batchNo) must be unique — but a composite PK forces
+/// every relation to carry both columns and costs an hour in Prisma.
+model Batch {
+  id             String         @id @default(cuid())
+  manufacturerId String
+  manufacturer   Organization   @relation("MfgBatches", fields: [manufacturerId], references: [id])
+  batchNo        String
+  productId      String
+  product        Product        @relation(fields: [productId], references: [id])
+  issuedQty      Int
+  mfgDate        DateTime
+  expiryDate     DateTime
+  registryStatus RegistryStatus @default(CLEAN)
+  destroyedAt    DateTime?
+
+  inventory    Inventory[]
+  ledger       BatchLedger[]
+  returns      ReturnRequest[]
+  certificates DestructionCertificate[]
+  alerts       Alert[]
+
+  @@unique([manufacturerId, batchNo])
+  @@index([expiryDate])
+}
+
+model Inventory {
+  id      String          @id @default(cuid())
+  orgId   String
+  org     Organization    @relation(fields: [orgId], references: [id])
+  batchId String
+  batch   Batch           @relation(fields: [batchId], references: [id])
+  qty     Int
+  status  InventoryStatus @default(ACTIVE)
+
+  @@unique([orgId, batchId])
+}
+
+/// APPEND ONLY. Never UPDATE, never DELETE. All balances are SUMs over this table.
+/// qtyDelta is always a positive magnitude; the event type carries the direction.
+model BatchLedger {
+  id        BigInt       @id @default(autoincrement())
+  batchId   String
+  batch     Batch        @relation(fields: [batchId], references: [id])
+  orgId     String
+  org       Organization @relation(fields: [orgId], references: [id])
+  eventType LedgerEvent
+  qtyDelta  Int
+  refType   String?
+  refId     String?
+  serverTs  DateTime     @default(now())
+
+  @@index([batchId, eventType])
+  @@index([orgId, batchId, eventType])
+}
+
+model ReturnRequest {
+  id             String       @id @default(cuid())
+  batchId        String
+  batch          Batch        @relation(fields: [batchId], references: [id])
+  retailerId     String
+  retailer       Organization @relation("RetRet", fields: [retailerId], references: [id])
+  distributorId  String
+  distributor    Organization @relation("RetDist", fields: [distributorId], references: [id])
+  manufacturerId String
+  manufacturer   Organization @relation("RetMfg", fields: [manufacturerId], references: [id])
+
+  state ReturnState @default(RETURN_DUE)
+  dueBy DateTime
+
+  declaredQty Int?
+  condition   String?
+  photoUrl    String?
+  initiatedAt DateTime?
+
+  pickupAt DateTime?
+
+  distReceivedQty Int?
+  distWeightG     Float?
+  distPhotoUrl    String?
+  distReceivedAt  DateTime?
+
+  mfgReceivedQty Int?
+  mfgReceivedAt  DateTime?
+
+  /// min() of confirmed quantities along the chain. The certificate ceiling
+  /// is computed from this, never from declaredQty.
+  confirmedQty Int?
+
+  leakage   LeakageRecord[]
+  disposals DisposalRequest[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@index([state])
+  @@index([dueBy])
+}
+
+/// Created whenever received < declared. NEVER auto-closed.
+/// An OPEN LeakageRecord is the correct end state, not an unfinished feature.
+model LeakageRecord {
+  id          String        @id @default(cuid())
+  returnId    String
+  return      ReturnRequest @relation(fields: [returnId], references: [id])
+  batchId     String
+  fromOrgId   String
+  toOrgId     String
+  declaredQty Int
+  receivedQty Int
+  leakedQty   Int
+  status      LeakageStatus @default(OPEN)
+  note        String?
+  createdAt   DateTime      @default(now())
+
+  @@index([status])
+  @@index([fromOrgId])
+}
+
+model DisposalRequest {
+  id                 String                   @id @default(cuid())
+  returnId           String
+  return             ReturnRequest            @relation(fields: [returnId], references: [id])
+  batchId            String
+  manufacturerId     String
+  facilityId         String
+  qty                Int
+  scheduledDate      DateTime
+  facilityReceivedAt DateTime?
+  certificates       DestructionCertificate[]
+  createdAt          DateTime                 @default(now())
+}
+
+model DestructionCertificate {
+  id                String          @id @default(cuid())
+  certNo            String          @unique
+  disposalRequestId String
+  disposalRequest   DisposalRequest @relation(fields: [disposalRequestId], references: [id])
+  batchId           String
+  batch             Batch           @relation(fields: [batchId], references: [id])
+  facilityId        String
+  qty               Int
+  issuedAt          DateTime        @default(now())
+}
+
+model PosScan {
+  id                 String      @id @default(cuid())
+  orgId              String
+  rawManufacturerRef String
+  rawBatchNo         String
+  batchId            String?
+  qty                Int
+  context            ScanContext
+  /// client-supplied, NOT authoritative
+  claimedInvoiceDate DateTime?
+  verdict            ScanVerdict
+  alertCode          AlertCode?
+  serverTs           DateTime    @default(now())
+}
+
+model Alert {
+  id               String    @id @default(cuid())
+  code             AlertCode
+  severity         Severity
+  batchId          String?
+  batch            Batch?    @relation(fields: [batchId], references: [id])
+  orgId            String?
+  payload          Json
+  acknowledgedById String?
+  acknowledgedAt   DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([severity, createdAt])
+}
+
+/// Hash chain proves the digital record was not altered after the fact.
+/// It does NOT prove physical destruction occurred. Keep that caveat visible in the UI.
+model AuditEvent {
+  id          BigInt   @id @default(autoincrement())
+  entityType  String
+  entityId    String
+  action      String
+  actorUserId String?
+  actorOrgId  String?
+  payload     Json
+  prevHash    String?
+  hash        String
+  serverTs    DateTime @default(now())
+
+  @@index([entityType, entityId])
+}
+
+model IdempotencyKey {
+  key            String   @id
+  userId         String
+  endpoint       String
+  requestHash    String
+  responseStatus Int
+  responseBody   Json
+  createdAt      DateTime @default(now())
+}
