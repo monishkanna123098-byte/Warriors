@@ -4,6 +4,8 @@ import { runTransition, toResponse } from "@/lib/route-helpers";
 import { parseBody } from "@/lib/http";
 import { ReturnState, Role } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+
 const Body = z.object({
   scannedBatchNo: z.string().min(1),
   receivedQty: z.number().int().nonnegative(),

@@ -5,6 +5,8 @@ import { appendAudit } from "@/lib/audit";
 import { notFound } from "@/lib/errors";
 import { Role } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   try {
     const session = await requireRole(Role.REGULATOR);

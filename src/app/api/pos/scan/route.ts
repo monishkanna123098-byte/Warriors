@@ -5,6 +5,8 @@ import { ok, parseBody, toResponse, withIdempotency } from "@/lib/http";
 import { decideScan } from "@/lib/pos";
 import { ScanContext, ScanVerdict } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+
 const Body = z.object({
   manufacturerRef: z.string().min(1),
   batchNo: z.string().min(1),

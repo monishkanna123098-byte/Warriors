@@ -7,6 +7,8 @@ import { ok, parseBody, toResponse } from "@/lib/http";
 import { AppError } from "@/lib/errors";
 import type { Role } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+
 const Body = z.object({ email: z.string().email(), password: z.string().min(1) });
 
 export async function POST(req: Request) {

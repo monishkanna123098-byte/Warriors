@@ -5,6 +5,8 @@ import { parseBody, toResponse } from "@/lib/http";
 import { runTransition } from "@/lib/route-helpers";
 import { ReturnState, Role } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+
 const Body = z.object({
   returnId: z.string().min(1),
   facilityId: z.string().min(1),

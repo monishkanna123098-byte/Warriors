@@ -5,6 +5,8 @@ import { runTransition } from "@/lib/route-helpers";
 import { forbidden, notFound } from "@/lib/errors";
 import { ReturnState, Role } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   try {
     const session = await requireRole(Role.FACILITY);

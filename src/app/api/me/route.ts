@@ -2,6 +2,8 @@ import { currentUser } from "@/lib/auth";
 import { ok, toResponse } from "@/lib/http";
 import { unauthorized } from "@/lib/errors";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const user = await currentUser();
