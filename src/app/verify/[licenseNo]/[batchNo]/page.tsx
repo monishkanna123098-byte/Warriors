@@ -3,7 +3,6 @@
 // Server-rendered so a phone gets the answer in one request with no JS, and so
 // the page works when scanned from a QR on a laptop screen.
 
-import { headers } from "next/headers";
 import { licenseCandidates } from "@/lib/license";
 import { prisma } from "@/lib/db";
 import { RegistryStatus } from "@/lib/types";
@@ -37,7 +36,6 @@ export default async function VerifyPage({
 }: {
   params: { licenseNo: string; batchNo: string };
 }) {
-  headers(); // opt out of static rendering
   const licenseNo = decodeURIComponent(params.licenseNo);
   const batchNo = decodeURIComponent(params.batchNo).trim().toUpperCase();
   const now = new Date();

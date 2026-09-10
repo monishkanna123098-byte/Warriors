@@ -5,6 +5,7 @@ import { ok } from "@/lib/http";
 export const dynamic = "force-dynamic";
 
 export async function POST() {
-  cookies().delete(SESSION_COOKIE);
+  const cookieStore = await cookies();
+  cookieStore.delete(SESSION_COOKIE);
   return ok({ loggedOut: true });
 }

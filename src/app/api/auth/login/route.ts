@@ -31,7 +31,8 @@ export async function POST(req: Request) {
       role: user.role as Role,
       email: user.email,
     });
-    cookies().set(SESSION_COOKIE, token, sessionCookieOptions());
+    const cookieStore = await cookies();
+    cookieStore.set(SESSION_COOKIE, token, sessionCookieOptions());
 
     return ok({
       user: { id: user.id, email: user.email, role: user.role },

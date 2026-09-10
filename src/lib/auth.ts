@@ -57,7 +57,10 @@ async function claimsFromToken(token: string): Promise<SessionClaims | null> {
 
 /** Returns null when there is no valid session. Never throws. */
 export async function getSession(): Promise<SessionClaims | null> {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+  // `cookies()` is synchronous in Next 14 and returns a Promise from Next 15 on.
+  // Awaiting satisfies both: awaiting a non-thenable yields the value unchanged.
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
   if (!token) return null;
   return claimsFromToken(token);
 }
