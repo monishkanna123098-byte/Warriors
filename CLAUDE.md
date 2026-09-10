@@ -52,6 +52,25 @@ npm run test
     changes how `invariants.ts` decides anything. CDSCO NSQ status and this system's own
     OK/EXPIRED receipt answer different questions and are never merged into one status.
 
+13. Every stock movement writes BOTH sides of the handoff in one transaction:
+    `TRANSFERRED` against the organisation releasing the units and `SUPPLIED` (or
+    `RECEIVED`) against the one taking them on. A lone inbound row lets quantity
+    appear from nowhere at a change of custody, and leaves I7 with nothing to
+    check. `src/lib/transfer.ts` is the only writer of `Transfer` rows.
+14. `Batch.registryStatus` values `HELD` and `RECALLED` are set only by
+    `lifecycle.issueHoldOrRecall`, only by a REGULATOR, and only with a recorded
+    reason. A release is a NEW `HoldRecallOrder` naming the order it lifts —
+    never an edit or a deletion, so `RECALLED -> CLEAN` can never happen without
+    an actor, a reason and an audit hash.
+15. `src/lib/consumer.ts` is the consumer-facing layer and decides nothing. The
+    consumer purchase bill (`ConsumerBill`) and the compliance receipt (`Bill`)
+    are different records answering different questions; never merge them or
+    substitute one for the other. A `CitizenReport` is EVIDENCE — it never
+    mutates a batch, and no code path may treat it as a finding.
+16. The public demo-date control is forward-only. It may make a verdict stricter
+    and never laxer, so no crafted URL can show expired stock as safe. It never
+    writes anything.
+
 ## Architecture
 
 ```
@@ -60,6 +79,9 @@ src/lib/lifecycle.ts    the ONLY mutator of ReturnRequest.state / Batch.registry
 src/lib/pos.ts          the §5.6 decision function, fixed rule order
 src/lib/billing.ts      compliance receipts, pure — reads an outcome, never decides one
 src/lib/cdsco.ts        CDSCO reference lookups, pure, read-only external ground truth
+src/lib/accountability.ts  per-location quantity reads — aggregation only, no rules
+src/lib/transfer.ts     stock movement between orgs; writes both sides of every hop
+src/lib/consumer.ts     consumer verdicts and the demo-date lens, pure
 src/lib/ledger.ts       every balance the invariants read, as SUMs over BatchLedger
 src/lib/audit.ts        the global hash chain and its verification walk
 scripts/import-cdsco.mjs  the only writer to NsqAlert / LicensedEntity

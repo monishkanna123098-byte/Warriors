@@ -37,13 +37,13 @@ These appear in `prisma/schema.prisma` and `src/lib/types.ts`. Never invent a va
 ```ts
 OrgType         = RETAILER | DISTRIBUTOR | MANUFACTURER | FACILITY | REGULATOR
 Role            = RETAILER | DISTRIBUTOR | MANUFACTURER | FACILITY | REGULATOR
-RegistryStatus  = CLEAN | IN_RETURN_PIPELINE | DESTROYED
+RegistryStatus  = CLEAN | IN_RETURN_PIPELINE | DESTROYED | HELD | RECALLED
 InventoryStatus = ACTIVE | QUARANTINED | RETURNED
 ExpiryState     = NORMAL | EXPIRY_WARNING | RETURN_DUE
 ReturnState     = RETURN_DUE | INITIATED | PICKUP_ASSIGNED
                 | DISTRIBUTOR_RECEIVED | MANUFACTURER_RECEIVED
                 | DISPOSAL_SCHEDULED | FACILITY_RECEIVED | CERTIFIED_DESTROYED
-LedgerEvent     = ISSUED | SUPPLIED | BILLED | RETURN_INITIATED
+LedgerEvent     = ISSUED | TRANSFERRED | SUPPLIED | BILLED | RETURN_INITIATED
                 | RECEIVED | LEAKED | DESTROYED
 ScanContext     = SALE | RETURN_INTAKE | VERIFY
 ScanVerdict     = ALLOW | BLOCK
@@ -52,8 +52,19 @@ LeakageStatus   = OPEN | ACKNOWLEDGED | WRITTEN_OFF
 AlertCode       = UNKNOWN_BATCH | RESURRECTED_BATCH | EXPIRED_SALE
                 | IN_PIPELINE_SALE | QUANTITY_BREACH | DOUBLE_RETURN
                 | LEAKAGE | WEIGHT_MISMATCH | BACKDATED_INVOICE
-                | CERTIFICATE_OVER_ALLOCATION
+                | CERTIFICATE_OVER_ALLOCATION | LOCATION_QUANTITY_BREACH
+                | STALLED_IN_PIPELINE | UNAUTHORIZED_ROUTE | RECALLED_SALE
+                | HELD_SALE | CITIZEN_REPORT
+HoldAction      = HOLD_ISSUED | RECALL_ISSUED | RELEASED
+CitizenReportReason
+                = SUSPECTED_EXPIRED | SUSPECTED_COUNTERFEIT | PACKAGING_TAMPERED
+                | ADVERSE_REACTION | SOLD_AFTER_RECALL | OTHER
 ```
+
+`src/lib/types.ts` carries a compile-time drift guard for each of these, so this
+list, the Prisma schema and the app enums cannot fall out of step without the
+build failing. Extending the list is a deliberate act that touches all three
+files at once; inventing a variant in one of them is still forbidden.
 
 ---
 
@@ -388,6 +399,39 @@ invent a batch number             -> not in registry           -> I2 CRITICAL
 Tests must cover: each invariant's pass case, each breach case, `receivedQty ===
 declaredQty` (zero leakage), partial certificate allocation across two certificates,
 and I5 on a batch whose `registryStatus` is `CLEAN`.
+
+---
+
+### I7 LOCATION CONSERVATION
+
+```
+Received + Transfers In - Sales - Transfers Out - Returns >= 0
+```
+
+Evaluated per `(organisation, batch)` over `BatchLedger`. A negative balance is
+`LOCATION_QUANTITY_BREACH` at HIGH.
+
+This is an **accounting inconsistency, not proof of diversion.** The honest
+readings include a missed inbound record, a mis-keyed quantity and a genuine
+diversion, and nothing in the check distinguishes them. It is a reason to ask a
+question, never a finding. `LEAKED` is neutral in this sum: those units were
+already counted out by the row that dispatched them.
+
+Every stock movement writes BOTH sides — `TRANSFERRED` against whoever released
+the units and `SUPPLIED` (or `RECEIVED`) against whoever took them on. Without
+the pair, quantity appears or vanishes at a change of custody and this invariant
+has nothing to check.
+
+### I8 STAGE STALL
+
+Per-stage SLA over `ReturnRequest.state` and the server's `updatedAt`. Past the
+deadline: `STALLED_IN_PIPELINE`, MEDIUM, escalating to HIGH once overdue by a
+full SLA period.
+
+The failure this catches is an **absent** event rather than a refused one. A
+return that is accepted, quarantined off the shelf and then never collected trips
+none of I1–I6, because nothing happened — and "nothing happened" is precisely the
+state a party that does not want stock reconciled would choose.
 
 ---
 

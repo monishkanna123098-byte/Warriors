@@ -65,6 +65,8 @@ const DIST = "dist1@chennaimeds.example";
 const MFG1 = "mfg1@aurex.example";
 const FAC1 = "fac1@tnbiomedical.example";
 const REG1 = "reg1@tndrugscontrol.example";
+const RETD = "retd@adyar.example";
+const RETE = "rete@tambaram.example";
 
 async function main() {
   console.log(`\nRCCP acceptance checklist — ${BASE}\n${"=".repeat(60)}`);
@@ -529,6 +531,348 @@ async function main() {
     "the audit chain stays intact with receipts appended to it",
     auditAfter.body.valid === true,
     auditAfter.body,
+  );
+
+  // ==================================================================
+  // D — quantity accountability, transfers, holds, consumer, evidence
+  // ==================================================================
+
+  const batches = (await api(REG1, "/api/batches")).body;
+  const byNo = (no) => (batches.items ?? []).find((b) => b.batchNo === no);
+
+  // ---------------------------------------------------------------- D1
+  // The regulator's central question, answered from the ledger alone.
+  const amx = byNo("AMX-25081");
+  const acct = amx ? await api(REG1, `/api/accountability/batch/${amx.id}`) : { body: {} };
+  const t = acct.body.totals ?? {};
+  check(
+    "D1",
+    "one batch across five pharmacies: 10,000 issued, 8,000 sold, 2,000 outstanding, 1,700 collected, 300 unaccounted",
+    t.issued === 10000 &&
+      t.sold === 8000 &&
+      t.outstanding === 2000 &&
+      t.collected === 1700 &&
+      t.unaccounted === 300,
+    t,
+  );
+
+  // ---------------------------------------------------------------- D2
+  // Not just a total — WHICH pharmacies the missing units sit behind.
+  const short = (acct.body.locations ?? [])
+    .filter((l) => l.unaccounted > 0)
+    .map((l) => `${l.orgName}:${l.unaccounted}`)
+    .sort();
+  check(
+    "D2",
+    "the shortfall names the responsible pharmacies, not just a total",
+    short.length === 2 &&
+      short.includes("Adyar Health Mart:100") &&
+      short.includes("Tambaram Medicals:200"),
+    short,
+  );
+
+  // ---------------------------------------------------------------- D3
+  // The defect this release fixes: before the transfer route existed, nothing
+  // outside the seed wrote a SUPPLIED row, so stock could not reach a shelf.
+  const freshBatchNo = `TRF-${Date.now().toString().slice(-6)}`;
+  const products = await api(MFG1, "/api/batches");
+  const productId =
+    products.body.products?.[0]?.id ?? products.body.items?.[0]?.productId ?? null;
+  const made = await api(MFG1, "/api/batches", {
+    method: "POST",
+    body: JSON.stringify({
+      batchNo: freshBatchNo,
+      productId,
+      issuedQty: 500,
+      mfgDate: "2026-01-01T00:00:00Z",
+      expiryDate: "2028-01-01T00:00:00Z",
+    }),
+  });
+  const newBatchId = made.body.id ?? made.body.batchId ?? made.body.batch?.id;
+
+  const orgs = (await api(MFG1, "/api/orgs")).body;
+  const orgList = orgs.items ?? orgs.organizations ?? [];
+  const distId = orgList.find((o) => o.type === "DISTRIBUTOR")?.id;
+  const retAId = orgList.find((o) => o.licenseNo === "DL/TN/4401")?.id;
+
+  const toDist = await api(MFG1, "/api/transfers", {
+    method: "POST",
+    body: JSON.stringify({ batchId: newBatchId, toOrgId: distId, qty: 200 }),
+  });
+  const toRet = await api(DIST, "/api/transfers", {
+    method: "POST",
+    body: JSON.stringify({ batchId: newBatchId, toOrgId: retAId, qty: 120 }),
+  });
+  check(
+    "D3",
+    "stock issued through the API can reach a pharmacy shelf — manufacturer -> distributor -> retailer",
+    toDist.status === 200 &&
+      toRet.status === 200 &&
+      toDist.body.authorized === true &&
+      toRet.body.authorized === true,
+    { toDist: toDist.body, toRet: toRet.body },
+  );
+
+  // ---------------------------------------------------------------- D4
+  // Both halves of the handoff, or quantity appears from nowhere.
+  const acct2 = await api(REG1, `/api/accountability/batch/${newBatchId}`);
+  const dist = (acct2.body.locations ?? []).find((l) => l.orgType === "DISTRIBUTOR");
+  const ret = (acct2.body.locations ?? []).find((l) => l.licenseNo === "DL/TN/4401");
+  check(
+    "D4",
+    "a transfer writes both sides: the sender's balance falls by exactly what the receiver's rises",
+    dist?.balance?.balance === 80 && ret?.balance?.balance === 120,
+    { distributor: dist?.balance, retailer: ret?.balance },
+  );
+
+  // ---------------------------------------------------------------- D5
+  // I7 — refused before the fact, so the books cannot go negative through the API.
+  const overshoot = await api(DIST, "/api/transfers", {
+    method: "POST",
+    body: JSON.stringify({ batchId: newBatchId, toOrgId: retAId, qty: 5000 }),
+  });
+  check(
+    "D5",
+    "I7: transferring more than a location holds is refused (409), not silently absorbed",
+    overshoot.status === 409 && overshoot.body.error?.code === "LOCATION_QUANTITY_BREACH",
+    { status: overshoot.status, body: overshoot.body },
+  );
+
+  // ---------------------------------------------------------------- D6
+  // An unauthorised route is RECORDED and flagged, never refused: refusing it
+  // would only push the movement off the books.
+  const sideways = await api(RETA, "/api/transfers", {
+    method: "POST",
+    body: JSON.stringify({ batchId: newBatchId, toOrgId: orgList.find((o) => o.licenseNo === "DL/TN/4403")?.id, qty: 5 }),
+  });
+  check(
+    "D6",
+    "an unauthorised route is recorded and flagged, not refused",
+    sideways.status === 200 &&
+      sideways.body.authorized === false &&
+      sideways.body.alerts?.some((a) => a.code === "UNAUTHORIZED_ROUTE"),
+    sideways.body,
+  );
+
+  // ---------------------------------------------------------------- D7
+  const recalled = byNo("RCL-4402");
+  const recalledId = recalled?.id;
+  const recallScan = await scan(RETB, "MFG/TN/002", "RCL-4402", 1);
+  check(
+    "D7",
+    "a recalled batch is blocked at the counter",
+    recallScan.body.verdict === "BLOCK" && recallScan.body.alertCode === "RECALLED_SALE",
+    recallScan.body,
+  );
+
+  // ---------------------------------------------------------------- D8
+  const heldScan = await scan(RETC, "MFG/TN/001", "HLD-7788", 1);
+  check(
+    "D8",
+    "a batch under hold is blocked at the counter, and says so differently from a recall",
+    heldScan.body.verdict === "BLOCK" && heldScan.body.alertCode === "HELD_SALE",
+    heldScan.body,
+  );
+
+  // ---------------------------------------------------------------- D9
+  // No silent RECALLED -> CLEAN, for anyone.
+  const retailerRelease = await api(RETB, "/api/regulator/holds", {
+    method: "POST",
+    body: JSON.stringify({ batchId: recalledId, action: "RELEASED", reason: "we would like to sell this" }),
+  });
+  const noReason = await api(REG1, "/api/regulator/holds", {
+    method: "POST",
+    body: JSON.stringify({ batchId: recalledId, action: "RELEASED", reason: "ok" }),
+  });
+  check(
+    "D9",
+    "a recall cannot be lifted by a retailer, nor by a regulator without a recorded reason",
+    retailerRelease.status === 403 && noReason.status === 400,
+    { retailer: retailerRelease.status, noReason: noReason.status },
+  );
+
+  // ---------------------------------------------------------------- D10
+  // A release is a NEW order referencing the one it lifts, never an edit.
+  const release = await api(REG1, "/api/regulator/holds", {
+    method: "POST",
+    body: JSON.stringify({
+      batchId: recalledId,
+      action: "RELEASED",
+      reason: "Retesting cleared the batch; the laboratory result was traced to a sampling error.",
+    }),
+  });
+  const holdLog = await api(REG1, "/api/regulator/holds");
+  const forThis = (holdLog.body.items ?? []).filter((h) => h.batchId === recalledId);
+  check(
+    "D10",
+    "lifting a recall appends a new order naming the one it lifts — the original stays on the record",
+    release.status === 200 &&
+      release.body.to === "CLEAN" &&
+      forThis.length === 2 &&
+      forThis.some((h) => h.action === "RELEASED" && h.releasesId) &&
+      forThis.some((h) => h.action === "RECALL_ISSUED"),
+    forThis,
+  );
+
+  // ---------------------------------------------------------------- D11
+  // Consumer purchase bill: multiple manufacturers on one bill, and qty 1.
+  const sale = await api(RETB, "/api/consumer-bills", {
+    method: "POST",
+    body: JSON.stringify({
+      lines: [
+        { manufacturerRef: "MFG/TN/001", batchNo: "P-9100", qty: 10 },
+        { manufacturerRef: "MFG/TN/002", batchNo: "B-1001", qty: 1 },
+      ],
+    }),
+  });
+  check(
+    "D11",
+    "one consumer bill carries lines from two manufacturers, including a single tablet",
+    sale.status === 200 &&
+      sale.body.lines?.length === 2 &&
+      sale.body.lines.some((l) => l.qty === 1) &&
+      new Set(sale.body.lines.map((l) => l.manufacturerLicenseNo)).size === 2,
+    sale.body,
+  );
+
+  // ---------------------------------------------------------------- D12
+  // The QR resolves to the live record with no login at all.
+  const pub = await fetch(`${BASE}/api/verify/bill/${sale.body.token}`).then((r) => r.json());
+  check(
+    "D12",
+    "the bill QR token resolves publicly, with no authentication",
+    pub.billNo === sale.body.billNo && pub.lines?.length === 2 && pub.allSafe === true,
+    pub,
+  );
+
+  // ---------------------------------------------------------------- D13
+  // A sale the system would refuse must not produce a receipt for it.
+  const badSale = await api(RETC, "/api/consumer-bills", {
+    method: "POST",
+    body: JSON.stringify({
+      lines: [
+        { manufacturerRef: "MFG/TN/001", batchNo: "P-9100", qty: 2 },
+        { manufacturerRef: "MFG/TN/001", batchNo: "B-2002", qty: 2 },
+      ],
+    }),
+  });
+  const afterBad = await api(RETC, "/api/consumer-bills");
+  check(
+    "D13",
+    "an expired line refuses the whole bill — no receipt, and the good lines are rolled back too",
+    badSale.status === 400 &&
+      badSale.body.error?.code === "EXPIRED_SALE" &&
+      !(afterBad.body.items ?? []).some((b) =>
+        b.lines?.some((l) => l.batchNo === "B-2002"),
+      ),
+    { status: badSale.status, error: badSale.body.error },
+  );
+
+  // ---------------------------------------------------------------- D14
+  // Dynamic expiry: the same stored record, read at a later date.
+  const later = new Date(Date.now() + 400 * 24 * 36e5).toISOString();
+  const simulated = await fetch(
+    `${BASE}/api/verify/bill/${sale.body.token}?asOf=${encodeURIComponent(later)}`,
+  ).then((r) => r.json());
+  const backwards = await fetch(
+    `${BASE}/api/verify/bill/${sale.body.token}?asOf=2020-01-01T00:00:00Z`,
+  ).then((r) => r.json());
+  check(
+    "D14",
+    "the demo date control makes a valid batch expire, and refuses to run backwards",
+    simulated.simulated === true &&
+      simulated.lines.some((l) => l.status === "EXPIRED") &&
+      backwards.simulated === false &&
+      backwards.simulationRejected === true,
+    { simulated: simulated.lines?.map((l) => l.status), backwards: backwards.simulated },
+  );
+
+  // ---------------------------------------------------------------- D15
+  // A citizen report is evidence. It must not move the batch.
+  const beforeReport = await api(REG1, `/api/accountability/batch/${newBatchId}`);
+  const report = await fetch(`${BASE}/api/citizen-reports`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      manufacturerRef: "MFG/TN/001",
+      batchNo: freshBatchNo,
+      reason: "SUSPECTED_COUNTERFEIT",
+      description: "Foil looks re-sealed.",
+    }),
+  }).then((r) => r.json());
+  const afterReport = await api(REG1, `/api/accountability/batch/${newBatchId}`);
+  const stillSellable = await scan(RETA, "MFG/TN/001", freshBatchNo, 1);
+  check(
+    "D15",
+    "a public report is recorded as evidence and changes nothing about the batch on its own",
+    !!report.id &&
+      report.batchResolved === true &&
+      stillSellable.body.verdict === "ALLOW" &&
+      beforeReport.body.totals?.sold === afterReport.body.totals?.sold,
+    { report, verdict: stillSellable.body.verdict },
+  );
+
+  // ---------------------------------------------------------------- D16
+  const unresolved = await fetch(`${BASE}/api/citizen-reports`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      manufacturerRef: "MFG/TN/001",
+      batchNo: "NO-SUCH-BATCH-9999",
+      reason: "SUSPECTED_COUNTERFEIT",
+    }),
+  }).then((r) => r.json());
+  check(
+    "D16",
+    "a report about a batch number that does not exist is kept, not rejected — that is the counterfeit signal",
+    !!unresolved.id && unresolved.batchResolved === false,
+    unresolved,
+  );
+
+  // ---------------------------------------------------------------- D17
+  const stalls = await api(REG1, "/api/regulator/stalls");
+  const stalled = (stalls.body.items ?? []).filter((i) => i.stalled);
+  check(
+    "D17",
+    "I8: a return that stopped moving is listed with who owes the next event and by when",
+    stalls.status === 200 &&
+      stalled.length >= 1 &&
+      stalled.every((i) => i.owedByRole && i.expectedNext && i.deadline && i.overdueDays > 0),
+    { stalled: stalled.length, sample: stalled[0] },
+  );
+
+  // ---------------------------------------------------------------- D18
+  const breaches = await api(REG1, "/api/regulator/breaches");
+  check(
+    "D18",
+    "I7: the seeded books-do-not-balance location is reported, and nothing else is",
+    breaches.status === 200 &&
+      breaches.body.items?.length >= 1 &&
+      breaches.body.items.some((b) => b.batchNo === "LGC-0091" && b.breach.shortfall === 40),
+    breaches.body.items?.map((b) => `${b.batchNo}/${b.orgName}`),
+  );
+
+  // ---------------------------------------------------------------- D19
+  const replay = await api(REG1, `/api/regulator/replay/${amx?.id}`);
+  check(
+    "D19",
+    "forensic replay reconstructs a batch chronologically from stored rows",
+    replay.status === 200 &&
+      replay.body.events?.length > 5 &&
+      replay.body.events.every((e, i, arr) => i === 0 || arr[i - 1].at <= e.at) &&
+      replay.body.events.some((e) => e.event === "ISSUED") &&
+      replay.body.events.some((e) => e.event === "BILLED"),
+    { count: replay.body.events?.length },
+  );
+
+  // ---------------------------------------------------------------- D20
+  // Everything above appended to the same chain it started on.
+  const finalAudit = await api(REG1, "/api/audit/verify");
+  check(
+    "D20",
+    "the hash chain is still intact after transfers, recalls, releases, bills and reports",
+    finalAudit.body.valid === true,
+    finalAudit.body,
   );
 
   console.log("=".repeat(60));

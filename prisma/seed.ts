@@ -5,7 +5,8 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { execFileSync } from "node:child_process";
-import { raiseDueReturns, transition } from "../src/lib/lifecycle";
+import { issueHoldOrRecall, raiseDueReturns, transition } from "../src/lib/lifecycle";
+import { executeTransfer } from "../src/lib/transfer";
 import { appendAudit } from "../src/lib/audit";
 import { buildBillPayload } from "../src/lib/billing";
 import { AlertCode, ReturnState } from "../src/lib/types";
@@ -19,6 +20,12 @@ async function main() {
   console.log("Resetting…");
   // Order matters: children before parents.
   await prisma.$transaction([
+    prisma.consumerBillLine.deleteMany(),
+    prisma.consumerBill.deleteMany(),
+    prisma.citizenReport.deleteMany(),
+    prisma.holdRecallOrder.deleteMany(),
+    prisma.transfer.deleteMany(),
+    prisma.authorizedRoute.deleteMany(),
     prisma.bill.deleteMany(),
     prisma.destructionCertificate.deleteMany(),
     prisma.disposalRequest.deleteMany(),
@@ -143,28 +150,49 @@ async function main() {
   const led = (
     batchId: string,
     orgId: string,
-    eventType: "ISSUED" | "SUPPLIED" | "BILLED",
+    eventType: "ISSUED" | "SUPPLIED" | "BILLED" | "TRANSFERRED" | "RETURN_INITIATED",
     qtyDelta: number,
   ) => prisma.batchLedger.create({ data: { batchId, orgId, eventType, qtyDelta, refType: "seed" } });
 
-  for (const b of [b1001, b2002, b3003, k1001]) {
+  /**
+   * Stock reaching a pharmacy passes through the distributor, and every hop
+   * writes BOTH sides: TRANSFERRED against whoever let go of the units and
+   * SUPPLIED against whoever took them on.
+   *
+   * A lone SUPPLIED row — which is all this seed used to write — leaves the
+   * sender's books permanently showing stock it no longer has, and I7 has
+   * nothing to check. Pairing them is what makes a location balance mean
+   * anything.
+   */
+  const supply = async (batchId: string, mfgId: string, retailerId: string, qty: number) => {
+    await led(batchId, mfgId, "TRANSFERRED", qty);
+    await led(batchId, dist1.id, "SUPPLIED", qty);
+    await led(batchId, dist1.id, "TRANSFERRED", qty);
+    await led(batchId, retailerId, "SUPPLIED", qty);
+  };
+
+  // EVERY batch needs its ISSUED row. Batch.issuedQty is the declared figure;
+  // the ledger row is what issuedSum() actually reads, and a batch with one and
+  // not the other has a manufacturer whose books show stock leaving that never
+  // arrived — which is exactly what I7 reports.
+  for (const b of [b1001, b2002, b3003, k1001, p7781, c9004, m3320, p9100]) {
     await led(b.id, b.manufacturerId, "ISSUED", b.issuedQty);
   }
 
-  await led(b1001.id, retA.id, "SUPPLIED", 100);
-  await led(b1001.id, retB.id, "SUPPLIED", 40);
-  await led(b2002.id, retC.id, "SUPPLIED", 60);
-  await led(b3003.id, retC.id, "SUPPLIED", 50);
+  await supply(b1001.id, mfg1.id, retA.id, 100);
+  await supply(b1001.id, mfg1.id, retB.id, 40);
+  await supply(b2002.id, mfg1.id, retC.id, 60);
+  await supply(b3003.id, mfg1.id, retC.id, 200); // all 200 issued; 195 billed leaves A12's 5-unit headroom
 
   // 195 of 200 issued already billed — leaves 5 units of headroom, so a scan of
   // 10 breaches I1. This is acceptance A12 and nothing else; do not round it.
   await led(b3003.id, retC.id, "BILLED", 195);
 
-  await led(p7781.id, retA.id, "SUPPLIED", 120);
-  await led(c9004.id, retA.id, "SUPPLIED", 45);
-  await led(m3320.id, retB.id, "SUPPLIED", 80);
-  await led(p9100.id, retB.id, "SUPPLIED", 150);
-  await led(p9100.id, retC.id, "SUPPLIED", 90);
+  await supply(p7781.id, mfg1.id, retA.id, 200); // 180 billed below; the shelf count stays 120
+  await supply(c9004.id, mfg1.id, retA.id, 45);
+  await supply(m3320.id, mfg2.id, retB.id, 80);
+  await supply(p9100.id, mfg1.id, retB.id, 150);
+  await supply(p9100.id, mfg1.id, retC.id, 90);
 
   // Ordinary trading history, so batch-health bars are not empty and the
   // headroom on healthy batches is visibly different from B-3003's.
@@ -371,6 +399,262 @@ async function main() {
     });
   });
 
+  // =====================================================================
+  // DEMO SCENARIOS — quantity accountability, recall, consumer, evidence.
+  //
+  // Every number below is load-bearing for one act of the demo. Where the real
+  // service exists, it is called rather than imitated: transfers go through
+  // executeTransfer, recalls through issueHoldOrRecall, consumer bills through
+  // the same POS decision function a live terminal uses.
+  //
+  // All organisations, people and products here are fictional.
+  // =====================================================================
+
+  // --- the authorised distribution network ------------------------------
+  // Kept SEPARATE from CDSCO licensing on purpose: an entity can hold a valid
+  // licence and still not be an authorised route for a given maker's stock.
+  const route = (fromOrgId: string, toOrgId: string) =>
+    prisma.authorizedRoute.create({ data: { fromOrgId, toOrgId } });
+
+  const retD = await org("Adyar Health Mart", "RETAILER", "DL/TN/4404", "Adyar", dist1.id);
+  const retE = await org("Tambaram Medicals", "RETAILER", "DL/TN/4405", "Tambaram", dist1.id);
+  for (const [email, o] of [
+    ["retd@adyar.example", retD],
+    ["rete@tambaram.example", retE],
+  ] as const) {
+    await prisma.user.create({
+      data: { email, passwordHash, role: "RETAILER", organizationId: o.id },
+    });
+  }
+
+  await route(mfg1.id, dist1.id);
+  await route(mfg2.id, dist1.id);
+  for (const r of [retA, retB, retC, retD, retE]) await route(dist1.id, r.id);
+
+  // --- ACT 3: one batch, five pharmacies, a 300-unit hole ----------------
+  // 10,000 issued -> 8,000 sold -> 2,000 outstanding -> 1,700 collected.
+  // The 300 that never came back are Adyar's 100 and Tambaram's 200, and the
+  // per-location table is what names them. Do not round these figures.
+  const amx = await mkBatch(mfg1.id, "AMX-25081", p1.id, 10_000, "2026-08-20T00:00:00Z");
+  await led(amx.id, mfg1.id, "ISSUED", 10_000);
+
+  const act3: [typeof retA, number, number, number][] = [
+    // pharmacy, supplied, sold, returned
+    [retA, 3_000, 2_600, 400],
+    [retB, 2_500, 2_100, 400],
+    [retC, 2_000, 1_600, 400],
+    [retD, 1_500, 1_100, 300], // 100 short
+    [retE, 1_000, 600, 200], // 200 short
+  ];
+  for (const [ret, supplied, sold, returned] of act3) {
+    await supply(amx.id, mfg1.id, ret.id, supplied);
+    await led(amx.id, ret.id, "BILLED", sold);
+    if (returned > 0) await led(amx.id, ret.id, "RETURN_INITIATED", returned);
+    await inv(ret.id, amx.id, supplied - sold - returned);
+  }
+
+  // --- I7: a location whose books do not add up -------------------------
+  // Framed as it usually arrives in reality — a pharmacy migrated from paper
+  // whose opening stock was never captured, so its sales exceed its recorded
+  // receipts. An inconsistency to reconcile, NOT a finding of diversion.
+  const lgc = await mkBatch(mfg1.id, "LGC-0091", p3.id, 500, "2027-09-30T00:00:00Z");
+  await led(lgc.id, mfg1.id, "ISSUED", 500);
+  await supply(lgc.id, mfg1.id, retE.id, 100);
+  await led(lgc.id, retE.id, "BILLED", 140); // -40: more sold than ever received
+
+  // --- ACT 6: a batch the regulator recalls ------------------------------
+  const rcl = await mkBatch(mfg2.id, "RCL-4402", p4.id, 900, "2028-06-30T00:00:00Z");
+  await led(rcl.id, mfg2.id, "ISSUED", 900);
+  await supply(rcl.id, mfg2.id, retB.id, 300);
+  await led(rcl.id, retB.id, "BILLED", 120);
+  await inv(retB.id, rcl.id, 180);
+
+  // --- a batch under investigation, not yet recalled ---------------------
+  const hld = await mkBatch(mfg1.id, "HLD-7788", p5.id, 400, "2027-11-30T00:00:00Z");
+  await led(hld.id, mfg1.id, "ISSUED", 400);
+  await supply(hld.id, mfg1.id, retC.id, 150);
+  await led(hld.id, retC.id, "BILLED", 40);
+  await inv(retC.id, hld.id, 110);
+
+  // --- consumer purchase bills ------------------------------------------
+  // Written before the recall below, exactly as a real purchase would be: the
+  // customer bought it while the batch was clean, and their QR turns red later
+  // WITHOUT the receipt being edited. That is the whole point of resolving the
+  // token against the live record instead of a status frozen at sale time.
+  const consumerBill = async (
+    pharmacy: typeof retA,
+    billNo: string,
+    token: string,
+    soldAt: Date,
+    lines: { batch: typeof amx; qty: number; product: string; mfg: typeof mfg1 }[],
+  ) =>
+    prisma.consumerBill.create({
+      data: {
+        billNo,
+        token,
+        pharmacyId: pharmacy.id,
+        soldAt,
+        lines: {
+          create: lines.map((l) => ({
+            batchId: l.batch.id,
+            productName: l.product,
+            manufacturerName: l.mfg.name,
+            manufacturerLicenseNo: l.mfg.licenseNo,
+            batchNo: l.batch.batchNo,
+            expiryDate: l.batch.expiryDate,
+            qty: l.qty,
+          })),
+        },
+      },
+    });
+
+  const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 36e5);
+
+  // Multiple medicines, two different manufacturers, and a single-tablet line —
+  // the most common real transaction, and the one a per-pack model cannot hold.
+  const billValid = await consumerBill(
+    retB,
+    "RCCP-20260908-001",
+    "demo-valid-bill-token-0001",
+    daysAgo(2),
+    [
+      { batch: p9100, qty: 10, product: "Paracetamol 650mg", mfg: mfg1 },
+      { batch: k1001, qty: 1, product: "Amoxicillin 500mg", mfg: mfg2 },
+    ],
+  );
+
+  const billRecalled = await consumerBill(
+    retB,
+    "RCCP-20260909-002",
+    "demo-recalled-bill-token-002",
+    daysAgo(1),
+    [{ batch: rcl, qty: 14, product: "Metformin 500mg", mfg: mfg2 }],
+  );
+
+  // --- the recall and the hold, through the real service -----------------
+  const regUser = await prisma.user.findFirstOrThrow({ where: { organizationId: reg1.id } });
+  const regActor = { userId: regUser.id, orgId: reg1.id, role: "REGULATOR" };
+
+  await prisma.$transaction((tx) =>
+    issueHoldOrRecall(tx, regActor, {
+      batchId: rcl.id,
+      action: "RECALL_ISSUED",
+      reason:
+        "Dissolution failure confirmed on two retained samples by the state testing laboratory. All unsold stock to be withdrawn immediately.",
+    }),
+  );
+
+  await prisma.$transaction((tx) =>
+    issueHoldOrRecall(tx, regActor, {
+      batchId: hld.id,
+      action: "HOLD_ISSUED",
+      reason:
+        "Three adverse-reaction reports received from one district within a week. Held pending sample testing; no finding has been made.",
+    }),
+  );
+
+  // --- an unauthorised movement, through the real transfer service -------
+  // Pharmacy to pharmacy, with no route between them. It is RECORDED and
+  // flagged, not refused: refusing it would only push the stock off the books.
+  const retBUser = await prisma.user.findFirstOrThrow({ where: { organizationId: retB.id } });
+  await prisma.$transaction((tx) =>
+    executeTransfer(
+      tx,
+      { userId: retBUser.id, orgId: retB.id },
+      { batchId: p9100.id, toOrgId: retC.id, qty: 20, note: "Stock lent to cover a shortage" },
+    ),
+  );
+
+  // --- a return that stopped moving (I8) ---------------------------------
+  // The retailer initiated it three weeks ago and nobody upstream ever came to
+  // collect. Nothing in I1-I6 fires, because nothing HAPPENED — which is the
+  // whole point of I8, and why the stall needs its own batch: any thread the
+  // acceptance run drives forward stops being stalled.
+  const stl = await mkBatch(mfg1.id, "STL-5150", p3.id, 300, "2026-07-25T00:00:00Z");
+  await led(stl.id, mfg1.id, "ISSUED", 300);
+  await supply(stl.id, mfg1.id, retD.id, 120);
+  await led(stl.id, retD.id, "BILLED", 60);
+  await inv(retD.id, stl.id, 60);
+
+  const stalledRow = await prisma.returnRequest.create({
+    data: {
+      batchId: stl.id,
+      retailerId: retD.id,
+      distributorId: dist1.id,
+      manufacturerId: mfg1.id,
+      state: "INITIATED",
+      dueBy: new Date(stl.expiryDate.getTime() + 30 * 24 * 36e5),
+      declaredQty: 60,
+      condition: "Sealed, stored at room temperature",
+      initiatedAt: daysAgo(21),
+    },
+  });
+  await led(stl.id, retD.id, "RETURN_INITIATED", 60);
+  await prisma.batch.update({
+    where: { id: stl.id },
+    data: { registryStatus: "IN_RETURN_PIPELINE" },
+  });
+  // updatedAt is @updatedAt, so the client cannot backdate it.
+  await prisma.$executeRaw`UPDATE "ReturnRequest" SET "updatedAt" = NOW() - INTERVAL '21 days' WHERE id = ${stalledRow.id}`;
+
+  // --- citizen reports ---------------------------------------------------
+  const citizenReport = async (
+    manufacturerRef: string,
+    batchNo: string,
+    batchId: string | null,
+    reason: "SUSPECTED_EXPIRED" | "SUSPECTED_COUNTERFEIT" | "SOLD_AFTER_RECALL",
+    description: string,
+    location: string,
+  ) =>
+    prisma.$transaction(async (tx) => {
+      const audit = await appendAudit(tx, {
+        entityType: "Batch",
+        entityId: batchId ?? `UNRESOLVED:${batchNo}`,
+        action: "CITIZEN_REPORTED",
+        actorUserId: null,
+        actorOrgId: null,
+        payload: { rawManufacturerRef: manufacturerRef, rawBatchNo: batchNo, reason } as never,
+      });
+      await tx.citizenReport.create({
+        data: {
+          batchId,
+          rawManufacturerRef: manufacturerRef,
+          rawBatchNo: batchNo,
+          reason,
+          description,
+          location,
+          auditEventId: audit.id,
+        },
+      });
+      await tx.alert.create({
+        data: {
+          code: "CITIZEN_REPORT",
+          severity: "LOW",
+          batchId,
+          payload: { reason, rawBatchNo: batchNo, resolved: batchId !== null } as never,
+        },
+      });
+    });
+
+  await citizenReport(
+    mfg2.licenseNo,
+    "RCL-4402",
+    rcl.id,
+    "SOLD_AFTER_RECALL",
+    "Bought this last week and have just seen the recall notice. The pharmacy has not contacted me.",
+    "Guindy, Chennai",
+  );
+  // Unresolved on purpose: an invented batch number is the most valuable report
+  // there is, and rejecting it for failing to match would discard the signal.
+  await citizenReport(
+    mfg1.licenseNo,
+    "B-9999",
+    null,
+    "SUSPECTED_COUNTERFEIT",
+    "Printing on the strip is blurred and the foil looks re-sealed. No such batch number appears anywhere.",
+    "Velachery, Chennai",
+  );
+
   console.log("Seeded.");
   console.table({
     orgs: await prisma.organization.count(),
@@ -387,6 +671,11 @@ async function main() {
     openLeakage: await prisma.leakageRecord.count({ where: { status: "OPEN" } }),
     certificates: await prisma.destructionCertificate.count(),
     alerts: await prisma.alert.count(),
+    transfers: await prisma.transfer.count(),
+    authorizedRoutes: await prisma.authorizedRoute.count(),
+    holdsAndRecalls: await prisma.holdRecallOrder.count(),
+    consumerBills: await prisma.consumerBill.count(),
+    citizenReports: await prisma.citizenReport.count(),
     login: `any email above / ${PASSWORD}`,
   });
 }

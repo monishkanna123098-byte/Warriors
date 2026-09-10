@@ -150,6 +150,30 @@ export async function decideScan(
     };
   }
 
+  // --- Rule 2b: regulator hold or recall ---------------------------------
+  // Inserted here, NOT by reordering anything. CLAUDE.md rule 9 fixes the §5.6
+  // order and specifically requires expiry to precede the *pipeline* check; a
+  // hold or recall is the same class of fact as DESTROYED — a registry state
+  // that condemns the batch whatever the date — so it sits beside its sibling
+  // and every existing rule keeps its position.
+  if (
+    batch.registryStatus === RegistryStatus.RECALLED ||
+    batch.registryStatus === RegistryStatus.HELD
+  ) {
+    const recalled = batch.registryStatus === RegistryStatus.RECALLED;
+    return {
+      verdict: ScanVerdict.BLOCK,
+      alertCode: recalled ? AlertCode.RECALLED_SALE : AlertCode.HELD_SALE,
+      severity: recalled ? Severity.CRITICAL : Severity.HIGH,
+      message: recalled
+        ? "This batch has been recalled by the regulator. Take it off the shelf and return it. Do not dispense."
+        : "This batch is under a regulator hold pending investigation. Do not dispense until the hold is lifted.",
+      batch: view,
+      secondaryAlerts,
+      detail: { registryStatus: batch.registryStatus },
+    };
+  }
+
   // --- Rule 3: temporal validity (I5) ------------------------------------
   // Deliberately BEFORE the pipeline check: a batch that expired on the shelf
   // and was never returned has registryStatus CLEAN, so a registry-first order

@@ -30,6 +30,12 @@ export const ANOMALY_CODE_FOR: Readonly<Record<AlertCode, string>> = {
   IN_PIPELINE_SALE: "IN_PIPELINE",
   WEIGHT_MISMATCH: "WEIGHT_MISMATCH",
   BACKDATED_INVOICE: "BACKDATED_INVOICE",
+  LOCATION_QUANTITY_BREACH: "I7",
+  STALLED_IN_PIPELINE: "I8",
+  UNAUTHORIZED_ROUTE: "UNAUTHORIZED_ROUTE",
+  RECALLED_SALE: "RECALLED",
+  HELD_SALE: "HELD",
+  CITIZEN_REPORT: "CITIZEN_REPORT",
 } as const;
 
 /**
@@ -58,6 +64,18 @@ const NOTE_FOR: Readonly<Record<AlertCode, string>> = {
     "The weight received does not match the declared unit count. Recount before proceeding.",
   BACKDATED_INVOICE:
     "The invoice date supplied is more than 24 hours before the server clock. Recorded as evidence.",
+  LOCATION_QUANTITY_BREACH:
+    "This location's records show more units leaving than ever arrived. That is an accounting inconsistency to reconcile, not by itself proof of wrongdoing.",
+  STALLED_IN_PIPELINE:
+    "This stock has sat at one stage past its deadline with no next event. Chase the organisation holding it.",
+  UNAUTHORIZED_ROUTE:
+    "Stock moved between two organisations with no authorised route between them. The movement is recorded; the routing needs explaining.",
+  RECALLED_SALE:
+    "This batch has been recalled by the regulator. Remove it from the shelf and return it. Do not dispense.",
+  HELD_SALE:
+    "This batch is under a regulator hold pending investigation. Do not dispense until the hold is lifted.",
+  CITIZEN_REPORT:
+    "A member of the public reported this batch. It is evidence for the regulator to weigh, not a finding against the batch.",
 };
 
 /**
@@ -74,6 +92,12 @@ const BLOCKING: ReadonlySet<AlertCode> = new Set<AlertCode>([
   AlertCode.EXPIRED_SALE,
   AlertCode.RESURRECTED_BATCH,
   AlertCode.IN_PIPELINE_SALE,
+  // A regulator hold or recall condemns the stock as surely as expiry does.
+  // The remaining new codes deliberately stay out: I7 and I8 are accounting
+  // inconsistencies, UNAUTHORIZED_ROUTE is a routing question, and a citizen
+  // report is evidence — none of them is a finding against the units themselves.
+  AlertCode.RECALLED_SALE,
+  AlertCode.HELD_SALE,
 ]);
 
 /** The decision already reached elsewhere. Nothing here is re-evaluated. */

@@ -8,6 +8,8 @@ import type {
   OrgType as PrismaOrgType,
   Role as PrismaRole,
   RegistryStatus as PrismaRegistryStatus,
+  HoldAction as PrismaHoldAction,
+  CitizenReportReason as PrismaCitizenReportReason,
   InventoryStatus as PrismaInventoryStatus,
   ReturnState as PrismaReturnState,
   LedgerEvent as PrismaLedgerEvent,
@@ -34,6 +36,8 @@ export const RegistryStatus = {
   CLEAN: "CLEAN",
   IN_RETURN_PIPELINE: "IN_RETURN_PIPELINE",
   DESTROYED: "DESTROYED",
+  HELD: "HELD",
+  RECALLED: "RECALLED",
 } as const;
 export type RegistryStatus = (typeof RegistryStatus)[keyof typeof RegistryStatus];
 
@@ -67,6 +71,7 @@ export type ReturnState = (typeof ReturnState)[keyof typeof ReturnState];
 
 export const LedgerEvent = {
   ISSUED: "ISSUED",
+  TRANSFERRED: "TRANSFERRED",
   SUPPLIED: "SUPPLIED",
   BILLED: "BILLED",
   RETURN_INITIATED: "RETURN_INITIATED",
@@ -112,8 +117,31 @@ export const AlertCode = {
   WEIGHT_MISMATCH: "WEIGHT_MISMATCH",
   BACKDATED_INVOICE: "BACKDATED_INVOICE",
   CERTIFICATE_OVER_ALLOCATION: "CERTIFICATE_OVER_ALLOCATION",
+  LOCATION_QUANTITY_BREACH: "LOCATION_QUANTITY_BREACH",
+  STALLED_IN_PIPELINE: "STALLED_IN_PIPELINE",
+  UNAUTHORIZED_ROUTE: "UNAUTHORIZED_ROUTE",
+  RECALLED_SALE: "RECALLED_SALE",
+  HELD_SALE: "HELD_SALE",
+  CITIZEN_REPORT: "CITIZEN_REPORT",
 } as const;
 export type AlertCode = (typeof AlertCode)[keyof typeof AlertCode];
+
+export const HoldAction = {
+  HOLD_ISSUED: "HOLD_ISSUED",
+  RECALL_ISSUED: "RECALL_ISSUED",
+  RELEASED: "RELEASED",
+} as const;
+export type HoldAction = (typeof HoldAction)[keyof typeof HoldAction];
+
+export const CitizenReportReason = {
+  SUSPECTED_EXPIRED: "SUSPECTED_EXPIRED",
+  SUSPECTED_COUNTERFEIT: "SUSPECTED_COUNTERFEIT",
+  PACKAGING_TAMPERED: "PACKAGING_TAMPERED",
+  ADVERSE_REACTION: "ADVERSE_REACTION",
+  SOLD_AFTER_RECALL: "SOLD_AFTER_RECALL",
+  OTHER: "OTHER",
+} as const;
+export type CitizenReportReason = (typeof CitizenReportReason)[keyof typeof CitizenReportReason];
 
 // Compile-time drift guards: app enums must equal Prisma enums, both directions.
 type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
@@ -129,6 +157,8 @@ const _guards = {
   severity: true as Exact<Severity, PrismaSeverity>,
   leakageStatus: true as Exact<LeakageStatus, PrismaLeakageStatus>,
   alertCode: true as Exact<AlertCode, PrismaAlertCode>,
+  holdAction: true as Exact<HoldAction, PrismaHoldAction>,
+  citizenReportReason: true as Exact<CitizenReportReason, PrismaCitizenReportReason>,
 };
 export type _EnumDriftGuards = typeof _guards;
 

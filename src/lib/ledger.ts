@@ -81,3 +81,49 @@ export async function batchHealth(
     unaccounted: Math.max(0, returned - destroyed - leaked),
   };
 }
+
+/**
+ * Every event sum for one (org, batch) pair, in a single grouped query.
+ *
+ * One groupBy rather than seven aggregates: I7 is evaluated per organisation per
+ * batch, so a per-event round trip turns a regulator's batch page into N*7
+ * queries. Absent events are simply missing from the result, which is what
+ * `locationBalance` expects.
+ */
+export async function eventSums(
+  tx: Tx,
+  where: { batchId: string; orgId?: string },
+): Promise<Partial<Record<LedgerEvent, number>>> {
+  const rows = await tx.batchLedger.groupBy({
+    by: ["eventType"],
+    where,
+    _sum: { qtyDelta: true },
+  });
+  const out: Partial<Record<LedgerEvent, number>> = {};
+  for (const r of rows) out[r.eventType as LedgerEvent] = r._sum.qtyDelta ?? 0;
+  return out;
+}
+
+/** The same, for every organisation that has touched a batch. Feeds the I7 sweep. */
+export async function eventSumsByOrg(
+  tx: Tx,
+  batchId: string,
+): Promise<Map<string, Partial<Record<LedgerEvent, number>>>> {
+  const rows = await tx.batchLedger.groupBy({
+    by: ["orgId", "eventType"],
+    where: { batchId },
+    _sum: { qtyDelta: true },
+  });
+  const out = new Map<string, Partial<Record<LedgerEvent, number>>>();
+  for (const r of rows) {
+    const sums = out.get(r.orgId) ?? {};
+    sums[r.eventType as LedgerEvent] = r._sum.qtyDelta ?? 0;
+    out.set(r.orgId, sums);
+  }
+  return out;
+}
+
+/** Units an org has sent onward in transfers. The I7 "Transfers Out" term. */
+export function transferredSum(tx: Tx, orgId: string, batchId: string): Promise<number> {
+  return sum(tx, { batchId, orgId, eventType: LedgerEvent.TRANSFERRED });
+}

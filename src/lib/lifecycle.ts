@@ -24,6 +24,7 @@ import {
 } from "./ledger";
 import {
   AlertCode,
+  HoldAction,
   InventoryStatus,
   LedgerEvent,
   LeakageStatus,
@@ -388,15 +389,31 @@ export async function transition(
         },
       });
 
-      await tx.batchLedger.create({
-        data: {
-          batchId: ret.batchId,
-          orgId: ret.manufacturerId,
-          eventType: LedgerEvent.RECEIVED,
-          qtyDelta: payload.receivedQty,
-          refType: "ReturnRequest",
-          refId: returnId,
-        },
+      // Both sides of the handoff. Without the outbound row the distributor's
+      // I7 balance would stay permanently positive for units it no longer holds,
+      // and a distributor that quietly kept some of them would look square.
+      // The quantity is what the DISTRIBUTOR confirmed, not what the manufacturer
+      // received: all of it left the distributor, and any difference between the
+      // two is the leak recorded below.
+      await tx.batchLedger.createMany({
+        data: [
+          {
+            batchId: ret.batchId,
+            orgId: ret.manufacturerId,
+            eventType: LedgerEvent.RECEIVED,
+            qtyDelta: payload.receivedQty,
+            refType: "ReturnRequest",
+            refId: returnId,
+          },
+          {
+            batchId: ret.batchId,
+            orgId: ret.distributorId,
+            eventType: LedgerEvent.TRANSFERRED,
+            qtyDelta: upstream,
+            refType: "ReturnRequest",
+            refId: returnId,
+          },
+        ],
       });
 
       if (leak.leakedQty > 0) {
@@ -492,15 +509,26 @@ export async function transition(
         data: { state: ReturnState.FACILITY_RECEIVED },
       });
 
-      await tx.batchLedger.create({
-        data: {
-          batchId: ret.batchId,
-          orgId: dr.facilityId,
-          eventType: LedgerEvent.RECEIVED,
-          qtyDelta: dr.qty,
-          refType: "DisposalRequest",
-          refId: dr.id,
-        },
+      await tx.batchLedger.createMany({
+        data: [
+          {
+            batchId: ret.batchId,
+            orgId: dr.facilityId,
+            eventType: LedgerEvent.RECEIVED,
+            qtyDelta: dr.qty,
+            refType: "DisposalRequest",
+            refId: dr.id,
+          },
+          // The manufacturer's outbound side, as above.
+          {
+            batchId: ret.batchId,
+            orgId: dr.manufacturerId,
+            eventType: LedgerEvent.TRANSFERRED,
+            qtyDelta: dr.qty,
+            refType: "DisposalRequest",
+            refId: dr.id,
+          },
+        ],
       });
       break;
     }
@@ -773,3 +801,161 @@ export async function raiseDueReturns(tx: Tx, serverNow: Date): Promise<number> 
 //    certificate and leaves the return at FACILITY_RECEIVED, ready for the next
 //    one. The return advances only when the ceiling is fully consumed (A8).
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Emergency hold and recall — regulator actions on a batch.
+//
+// These live here because they mutate Batch.registryStatus, and CLAUDE.md rule 2
+// admits no second mutator. They are NOT part of the ReturnRequest state graph:
+// a hold is orthogonal to where a return has got to.
+// ---------------------------------------------------------------------------
+
+/**
+ * Which registry statuses each action may act on.
+ *
+ * IN_RETURN_PIPELINE and DESTROYED are absent by design. Both already withdraw
+ * the batch from sale more strongly than a hold does, and registryStatus holds
+ * one value — writing RECALLED over IN_RETURN_PIPELINE would destroy the record
+ * that a return is in flight, to no benefit. Recall exists to withdraw a batch
+ * that is otherwise CLEAN.
+ */
+const HOLD_PRECONDITIONS: Readonly<Record<HoldAction, readonly RegistryStatus[]>> = {
+  HOLD_ISSUED: [RegistryStatus.CLEAN],
+  RECALL_ISSUED: [RegistryStatus.CLEAN, RegistryStatus.HELD],
+  RELEASED: [RegistryStatus.HELD, RegistryStatus.RECALLED],
+};
+
+const STATUS_AFTER: Readonly<Record<HoldAction, RegistryStatus>> = {
+  HOLD_ISSUED: RegistryStatus.HELD,
+  RECALL_ISSUED: RegistryStatus.RECALLED,
+  RELEASED: RegistryStatus.CLEAN,
+};
+
+export interface HoldResult {
+  orderId: string;
+  batchId: string;
+  batchNo: string;
+  action: HoldAction;
+  from: RegistryStatus;
+  to: RegistryStatus;
+  reason: string;
+  createdAt: string;
+}
+
+/**
+ * Issues a hold or recall, or releases one.
+ *
+ * A release is a NEW HoldRecallOrder row referencing the order it lifts — never
+ * an edit or a deletion. That is what makes "no silent RECALLED -> CLEAN" true
+ * rather than merely intended: the release carries an actor, a reason and an
+ * audit hash, and the order it lifted stays on the record permanently.
+ *
+ * Must be called inside a transaction.
+ */
+export async function issueHoldOrRecall(
+  tx: Tx,
+  actor: Actor,
+  input: { batchId: string; action: HoldAction; reason: string; releasesId?: string | null },
+): Promise<HoldResult> {
+  const reason = input.reason.trim();
+  if (reason.length < 8) {
+    throw badRequest(
+      "VALIDATION_ERROR",
+      "A hold, recall or release must record why. State the reason in at least 8 characters.",
+    );
+  }
+
+  const batch = await tx.batch.findUnique({ where: { id: input.batchId } });
+  if (!batch) throw badRequest(AlertCode.UNKNOWN_BATCH, "That batch is not in any register.");
+
+  const from = batch.registryStatus as RegistryStatus;
+  const allowed = HOLD_PRECONDITIONS[input.action];
+  if (!allowed.includes(from)) {
+    throw conflict(
+      "ILLEGAL_TRANSITION",
+      `A batch that is ${from} cannot be ${input.action === HoldAction.RELEASED ? "released" : "held or recalled"}.`,
+      { registryStatus: from, action: input.action, allowedFrom: allowed },
+    );
+  }
+
+  let releasesId: string | null = null;
+  if (input.action === HoldAction.RELEASED) {
+    // A release must name the order it lifts. Releasing "the batch" in the
+    // abstract would leave no link between the restriction and its removal,
+    // which is exactly the audit gap this model exists to close.
+    const open = await tx.holdRecallOrder.findFirst({
+      where: { batchId: input.batchId, action: { in: [HoldAction.HOLD_ISSUED, HoldAction.RECALL_ISSUED] } },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!open) {
+      throw conflict("CONFLICT", "There is no hold or recall on this batch to release.");
+    }
+    if (input.releasesId && input.releasesId !== open.id) {
+      throw conflict("CONFLICT", "That is not the order currently in force on this batch.", {
+        inForce: open.id,
+      });
+    }
+    releasesId = open.id;
+  }
+
+  const to = STATUS_AFTER[input.action];
+  await tx.batch.update({ where: { id: batch.id }, data: { registryStatus: to } });
+
+  const audit = await appendAudit(tx, {
+    entityType: "Batch",
+    entityId: batch.id,
+    action: input.action,
+    actorUserId: actor.userId,
+    actorOrgId: actor.orgId,
+    payload: {
+      batchNo: batch.batchNo,
+      from,
+      to,
+      reason,
+      releasesId,
+    },
+  });
+
+  const order = await tx.holdRecallOrder.create({
+    data: {
+      batchId: batch.id,
+      action: input.action,
+      reason,
+      issuedByUserId: actor.userId,
+      issuedByOrgId: actor.orgId,
+      releasesId,
+      auditEventId: audit.id,
+    },
+  });
+
+  if (input.action !== HoldAction.RELEASED) {
+    await raiseAlert(tx, {
+      code: input.action === HoldAction.RECALL_ISSUED ? AlertCode.RECALLED_SALE : AlertCode.HELD_SALE,
+      severity: input.action === HoldAction.RECALL_ISSUED ? Severity.CRITICAL : Severity.HIGH,
+      batchId: batch.id,
+      orgId: actor.orgId,
+      detail: { reason, from, to, orderId: order.id },
+    });
+  }
+
+  return {
+    orderId: order.id,
+    batchId: batch.id,
+    batchNo: batch.batchNo,
+    action: input.action,
+    from,
+    to,
+    reason,
+    createdAt: order.createdAt.toISOString(),
+  };
+}
+
+/** The order in force on a batch, if any. Read-only. */
+export async function activeHoldOrder(tx: Tx, batchId: string) {
+  const latest = await tx.holdRecallOrder.findFirst({
+    where: { batchId },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!latest || latest.action === HoldAction.RELEASED) return null;
+  return latest;
+}
