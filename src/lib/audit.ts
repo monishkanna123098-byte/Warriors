@@ -10,6 +10,23 @@ import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import type { Tx } from "./db";
 
+/**
+ * Deterministic serialisation with sorted keys.
+ *
+ * Postgres jsonb does NOT preserve key order: `{"a":1,"b":2}` can come back as
+ * `{"b":2,"a":1}`. Hashing raw JSON.stringify output therefore breaks the chain
+ * the moment a payload is read back and rehashed, which is exactly what
+ * verifyChain does. Sorting keys makes write-time and read-time agree.
+ */
+export function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(",")}}`;
+}
+
 export function computeHash(input: {
   payload: unknown;
   actorUserId: string | null;
@@ -18,7 +35,7 @@ export function computeHash(input: {
 }): string {
   const { payload, actorUserId, serverTs, prevHash } = input;
   return createHash("sha256")
-    .update(JSON.stringify(payload) + actorUserId + serverTs.toISOString() + (prevHash ?? ""))
+    .update(canonicalJson(payload) + actorUserId + serverTs.toISOString() + (prevHash ?? ""))
     .digest("hex");
 }
 

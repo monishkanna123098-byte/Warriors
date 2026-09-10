@@ -615,10 +615,30 @@ export async function raiseDueReturns(tx: Tx, serverNow: Date): Promise<number> 
   let created = 0;
   for (const inv of expired) {
     if (!inv.org.mappedDistributorId) continue; // no route upstream; nothing to raise
-    const existing = await tx.returnRequest.findFirst({
-      where: { batchId: inv.batchId, retailerId: inv.orgId, state: { not: ReturnState.CERTIFIED_DESTROYED } },
+
+    // Only raise a return for stock the retailer has left to return. This is the
+    // same headroom I3 enforces, so the due list never offers an action that the
+    // invariant would then refuse — and it permits a batch to be returned in
+    // instalments, which a single-row-per-batch rule would not.
+    const [initiated, supplied] = await Promise.all([
+      returnInitiatedSum(tx, inv.orgId, inv.batchId),
+      suppliedSum(tx, inv.orgId, inv.batchId),
+    ]);
+    if (initiated >= supplied) continue;
+
+    const openRow = await tx.returnRequest.findFirst({
+      where: {
+        batchId: inv.batchId,
+        retailerId: inv.orgId,
+        state: { notIn: [ReturnState.CERTIFIED_DESTROYED, ReturnState.RETURN_DUE] },
+      },
     });
-    if (existing) continue;
+    if (openRow) continue; // one return in flight at a time per (retailer, batch)
+
+    const existingDue = await tx.returnRequest.findFirst({
+      where: { batchId: inv.batchId, retailerId: inv.orgId, state: ReturnState.RETURN_DUE },
+    });
+    if (existingDue) continue;
 
     await tx.returnRequest.create({
       data: {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeHash } from "./audit";
+import { canonicalJson, computeHash } from "./audit";
 
 const TS = new Date("2026-09-10T12:00:00.000Z");
 
@@ -27,5 +27,30 @@ describe("computeHash", () => {
     const a = computeHash({ payload: { x: 1 }, actorUserId: "u1", serverTs: TS, prevHash: "aa" });
     const b = computeHash({ payload: { x: 1 }, actorUserId: "u1", serverTs: TS, prevHash: "bb" });
     expect(a).not.toBe(b);
+  });
+});
+
+describe("canonicalJson", () => {
+  it("is stable under key reordering — the jsonb round-trip problem", () => {
+    expect(canonicalJson({ a: 1, b: 2 })).toBe(canonicalJson({ b: 2, a: 1 }));
+  });
+
+  it("sorts nested keys too", () => {
+    expect(canonicalJson({ x: { p: 1, q: 2 } })).toBe(canonicalJson({ x: { q: 2, p: 1 } }));
+  });
+
+  it("preserves array order, which is meaningful", () => {
+    expect(canonicalJson([1, 2])).not.toBe(canonicalJson([2, 1]));
+  });
+
+  it("still distinguishes different values", () => {
+    expect(canonicalJson({ a: 1 })).not.toBe(canonicalJson({ a: 2 }));
+  });
+
+  it("yields the same hash for a payload that survived a jsonb round trip", () => {
+    const written = { batchId: "b1", qty: 7, nested: { z: 1, a: 2 } };
+    const readBack = { nested: { a: 2, z: 1 }, qty: 7, batchId: "b1" };
+    const h = (p: unknown) => computeHash({ payload: p, actorUserId: "u", serverTs: TS, prevHash: null });
+    expect(h(written)).toBe(h(readBack));
   });
 });

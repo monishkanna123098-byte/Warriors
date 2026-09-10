@@ -90,10 +90,16 @@ export async function withIdempotency(
         record: async () => undefined,
       };
     }
+    // Replayed byte for byte. The body is stored as a serialised string rather
+    // than as a jsonb object because jsonb reorders keys, and a replay that
+    // differs from the original — even only in key order — is not a replay.
+    const stored = existing.responseBody as { serialized?: string } | null;
+    const bodyText =
+      typeof stored?.serialized === "string" ? stored.serialized : JSON.stringify(stored);
     return {
-      replay: NextResponse.json(existing.responseBody as never, {
+      replay: new NextResponse(bodyText, {
         status: existing.responseStatus,
-        headers: { "Idempotent-Replay": "true" },
+        headers: { "content-type": "application/json", "Idempotent-Replay": "true" },
       }),
       record: async () => undefined,
     };
@@ -110,7 +116,7 @@ export async function withIdempotency(
             endpoint,
             requestHash,
             responseStatus: status,
-            responseBody: jsonSafe(resBody) as never,
+            responseBody: { serialized: JSON.stringify(jsonSafe(resBody)) } as never,
           },
         })
         // A concurrent duplicate lost the race; the winner's row is authoritative.
