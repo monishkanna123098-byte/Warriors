@@ -51,6 +51,50 @@ if (jwtSecret && jwtSecret.length < 32) {
   });
 }
 
+// Placeholder detection.
+//
+// A value copied from .env.example is present, non-empty and correctly shaped,
+// so every structural check passes and the failure surfaces much later as
+// "P1001: can't reach database server" against a host that never existed. That
+// error blames the network for what is actually an unfilled field, so it is
+// worth catching here by name.
+const PLACEHOLDERS = [
+  "ep-xxx",
+  ".region.aws.neon.tech",
+  "user:pass",
+  "your-app",
+  "your_app",
+  "generate-with-openssl",
+  "a-long-random-string",
+  "changeme",
+  "<",
+  "example.com",
+];
+
+function placeholderIn(value) {
+  const v = value.toLowerCase();
+  return PLACEHOLDERS.find((m) => v.includes(m));
+}
+
+for (const [key, value] of [
+  ["DATABASE_URL", databaseUrl],
+  ["DIRECT_URL", directUrl],
+  ["JWT_SECRET", jwtSecret],
+]) {
+  if (!value) continue;
+  const marker = placeholderIn(value);
+  if (marker) {
+    problems.push({
+      key,
+      why: `still contains the placeholder "${marker}" from .env.example`,
+      hint:
+        "Replace it with the real value. A placeholder passes every shape check and\n" +
+        "     then fails at connection time as P1001 against a host that does not exist,\n" +
+        "     which reads like a network outage rather than an unfilled field.",
+    });
+  }
+}
+
 // Misconfigurations that build fine and then fail in production, so they are
 // worth saying out loud even though they are not fatal here.
 if (directUrl.includes("-pooler")) {
