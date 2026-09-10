@@ -15,18 +15,22 @@ interface Me {
 const NAV: Record<string, { href: string; label: string }[]> = {
   RETAILER: [
     { href: "/pos", label: "POS terminal" },
+    { href: "/sell", label: "Dispense + receipt" },
     { href: "/inventory", label: "Inventory" },
+    { href: "/transfers", label: "Transfers" },
     { href: "/returns/due", label: "Returns due" },
     { href: "/returns", label: "My returns" },
     { href: "/receipts", label: "Compliance receipts" },
   ],
   DISTRIBUTOR: [
     { href: "/distributor", label: "Inbound returns" },
+    { href: "/transfers", label: "Transfers" },
     { href: "/distributor/leakage", label: "Leakage ledger" },
     { href: "/receipts", label: "Compliance receipts" },
   ],
   MANUFACTURER: [
     { href: "/manufacturer", label: "Batch registry" },
+    { href: "/transfers", label: "Transfers" },
     { href: "/manufacturer/returns", label: "Inbound returns" },
     { href: "/manufacturer/certificates", label: "Certificates" },
     { href: "/manufacturer/alerts", label: "Alerts on my batches" },
@@ -35,7 +39,13 @@ const NAV: Record<string, { href: string; label: string }[]> = {
   FACILITY: [{ href: "/facility", label: "Inbound disposals" }],
   REGULATOR: [
     { href: "/regulator", label: "Overview" },
+    { href: "/regulator/accountability", label: "Quantity accountability" },
     { href: "/regulator/alerts", label: "Alerts" },
+    { href: "/regulator/holds", label: "Holds + recalls" },
+    { href: "/regulator/stalls", label: "Stalled returns" },
+    { href: "/regulator/breaches", label: "Books not balancing" },
+    { href: "/regulator/reports", label: "Public reports" },
+    { href: "/regulator/replay", label: "Forensic replay" },
     { href: "/regulator/leakage", label: "Leakage by org" },
     { href: "/regulator/overdue", label: "Overdue returns" },
     { href: "/regulator/batches", label: "Batch lookup" },

@@ -9,6 +9,10 @@ const DEMO_USERS = [
   ["reta@annanagar.example", "Anna Nagar Medicals — retailer"],
   ["retb@guindy.example", "Guindy Pharmacy — retailer"],
   ["retc@velachery.example", "Velachery Chemist — retailer"],
+  // The two pharmacies carrying the unaccounted stock in the AMX-25081 story.
+  // They have to be reachable, or the demo can name them but never show them.
+  ["retd@adyar.example", "Adyar Health Mart — retailer"],
+  ["rete@tambaram.example", "Tambaram Medicals — retailer"],
   ["dist1@chennaimeds.example", "Chennai Meds — distributor"],
   ["mfg1@aurex.example", "Aurex Pharma — manufacturer"],
   ["mfg2@kelvin.example", "Kelvin Labs — manufacturer"],

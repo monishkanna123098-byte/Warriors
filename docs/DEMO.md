@@ -99,3 +99,125 @@ Read them off `README.md`. The two that matter most: the CDSCO document is
 guidance, not statute, so this is infrastructure for a mandate that is coming;
 and waste facilities incinerate by weight, so the certificate is an attestation
 with an enforced ceiling, not proof of destruction.
+
+---
+
+# Part two — accountability, recall, and the consumer
+
+The acts above prove the chain refuses bad stock. These prove it can say where
+good stock went, and give the person holding the medicine a way to check it.
+
+Reseed before running these: `npx prisma db seed`.
+
+## Act 7 — where did the units go? (D1, D2)
+
+**TN Drugs Control** (`reg1@tndrugscontrol.example`) → **Quantity
+accountability** → `AMX-25081`.
+
+```
+Issued            10,000
+Sold to patients   8,000
+Never sold         2,000   <- had to come back for destruction
+Collected back     1,700
+Unaccounted          300
+```
+
+Scroll to *Where the units are*. The 300 is not a total floating free of anyone:
+**Adyar Health Mart owes 100 and Tambaram Medicals owes 200.** Every figure is a
+SUM over the append-only ledger — nobody types them in, and there is no field
+anywhere to edit them.
+
+Say the limitation out loud before a judge asks: stock destroyed locally without
+being recorded looks identical to stock diverted. This is a question to put to
+the pharmacy, not a finding against it.
+
+## Act 8 — the books that do not balance (D18)
+
+→ **Books not balancing**. Tambaram Medicals has sold 140 units of `LGC-0091`
+having only ever received 100.
+
+I7 catches it, and the caveat matters: the most common cause is an inbound record
+that was never captured, not diversion. It is HIGH severity because it needs an
+answer, and it is deliberately *not* a blocking finding.
+
+## Act 9 — stock that stopped moving (D17)
+
+→ **Stalled returns**. `STL-5150` has sat at `INITIATED` for 21 days against a
+3-day SLA, and the screen names who owes the next event.
+
+The point worth making: nothing was refused here. None of I1–I6 fired, because
+nothing *happened* — and "nothing happened" is exactly the state a party that does
+not want stock reconciled would choose.
+
+## Act 10 — the recall (D7, D8, D9, D10)
+
+→ **Holds + recalls**. `RCL-4402` is already recalled and `HLD-7788` held.
+
+1. Sign in as **Guindy Pharmacy** (`retb@guindy.example`) → POS terminal →
+   Kelvin Labs / `RCL-4402` → **BLOCK · RECALLED_SALE**.
+2. Try `HLD-7788` at Velachery: blocked too, with a different message — a hold is
+   an investigation, not a finding.
+3. Back as the regulator, try to release the recall with the reason "ok": refused.
+   A recall may only be lifted with a written reason, by a regulator, and the
+   release is a **new order naming the one it lifts**. The original never leaves
+   the record. There is no path from `RECALLED` to `CLEAN` that nobody signed.
+
+## Act 11 — the consumer (D11–D14)
+
+Open `/verify/bill/demo-recalled-bill-token-002` on a phone. No login.
+
+> **RECALLED — DO NOT USE**
+> Stop taking it and return it to the pharmacy.
+
+The receipt was issued *before* the recall and has not been reprinted. The QR
+carries an opaque token, not the data — so it resolves to the live record, and
+the answer changed underneath the paper. That is the whole argument for a token.
+
+Now open `/verify/bill/demo-valid-bill-token-0001`: **VALID**, two medicines from
+two different manufacturers, one of them a single tablet.
+
+Press **+1 year**. The same stored record now reads **EXPIRED — DO NOT USE**, and
+the page says plainly that it is a demonstration and that nothing was changed.
+
+The control is forward-only. It can make a verdict stricter and never laxer, so
+no crafted URL can show expired stock as safe.
+
+## Act 12 — issue a receipt live (D11, D13)
+
+**Guindy Pharmacy** → **Dispense + receipt**:
+
+| Manufacturer | Batch | Qty |
+|---|---|---|
+| `MFG/TN/001` | `P-9100` | 10 |
+| `MFG/TN/002` | `B-1001` | 1 |
+
+A receipt with a QR appears. Scan it off the screen.
+
+Now add a third line for `B-2002` (expired) and dispense again: **the whole sale
+is refused**, and the two good lines are rolled back with it. A receipt for
+medicine the system would not sell would be worse than no receipt at all.
+
+Note there is no price anywhere on it. RCCP is not a billing system.
+
+## Act 13 — the report, and what it is not (D15, D16)
+
+On the public page, press **Report this medicine**, pick a reason, send. Then, as
+the regulator → **Public reports**.
+
+Two things to say:
+
+- The report changes **nothing** about the batch. It is evidence for the regulator
+  to weigh; a system where a stranger's form could condemn a manufacturer's batch
+  would be trivially weaponised.
+- The second seeded report names `B-9999`, which appears on no register at all.
+  That report is kept *deliberately* — rejecting it for failing to match would
+  discard exactly the counterfeit signal it raises.
+
+## Act 14 — forensic replay (D19, D20)
+
+→ **Forensic replay** → `AMX-25081`. Every recorded event in order, each one read
+from a stored row: ledger movements, alerts, receipts, holds, reports.
+
+Close on `/api/audit/verify` → `{ valid: true }`, and on the limitation: this
+proves the digital record was not altered after the fact. It does not prove what
+physically happened to stock nobody recorded.

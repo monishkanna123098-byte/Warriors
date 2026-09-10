@@ -52,10 +52,15 @@ npx prisma db seed && node scripts/acceptance.mjs
 ## Architecture
 
 ```
-src/lib/invariants.ts   the six invariants, pure functions, no DB access
+src/lib/invariants.ts   the eight invariants, pure functions, no DB access
 src/lib/lifecycle.ts    the ONLY module that mutates return state / registry status
 src/lib/pos.ts          the §5.6 decision function, fixed rule order
 src/lib/ledger.ts       every balance the invariants read, as SUMs over BatchLedger
+src/lib/accountability.ts  per-location quantity reads — aggregation only, no rules
+src/lib/transfer.ts     stock movement between orgs; writes both sides of every hop
+src/lib/consumer.ts     consumer verdicts and the forward-only demo-date lens
+src/lib/billing.ts      compliance receipts — reads an outcome, never decides one
+src/lib/cdsco.ts        CDSCO reference lookups, read-only external ground truth
 src/lib/audit.ts        the global hash chain and its verification walk
 src/app/api/            route handlers: validate, authorise, call into the above
 src/app/(app)/          role dashboards
@@ -73,6 +78,13 @@ shortcut:
    and rolls the whole thing back — which is why a rejected certificate leaves
    no row behind.
 4. `BatchLedger` is append-only. Balances are always SUMs over it.
+5. Every stock movement writes BOTH sides in one transaction — `TRANSFERRED`
+   against whoever released the units, `SUPPLIED` or `RECEIVED` against whoever
+   took them on. A lone inbound row lets quantity appear from nowhere at a change
+   of custody, and leaves I7 nothing to check.
+6. A hold or recall is set only by `lifecycle.ts`, only by a regulator, and only
+   with a recorded reason. A release is a **new** order naming the one it lifts,
+   so `RECALLED -> CLEAN` can never happen without an actor, a reason and a hash.
 
 ## Deploying
 
@@ -104,7 +116,16 @@ automatically; seed once by hand, since seeding truncates every table.
    it does not detect a manufacturer under-declaring its own production.
 6. The audit chain proves the digital record was not altered after the fact. It
    does not prove that physical destruction occurred.
-7. The chain tip is read and appended inside a transaction but without a
+7. I7 reports an **accounting inconsistency**, not diversion. A missed inbound
+   record, a mis-keyed quantity and a genuine diversion all look identical to it,
+   and it cannot tell them apart. Same for I8: a stall says nobody acted, not why.
+8. A citizen report is **evidence**, never a finding. It changes nothing about a
+   batch on its own, deliberately — a system where a stranger's form submission
+   could condemn a manufacturer's batch would be trivially weaponised.
+9. Stock destroyed locally without being recorded is indistinguishable from stock
+   diverted. The unaccounted figure is a question to put to a pharmacy, not a
+   verdict against it.
+10. The chain tip is read and appended inside a transaction but without a
    serialisable isolation level or an advisory lock, so two genuinely concurrent
    appends could in principle read the same predecessor. At demo concurrency this
    does not arise; under load it needs one of those two mechanisms.

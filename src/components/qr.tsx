@@ -29,3 +29,33 @@ export function VerifyQR({ licenseNo, batchNo, size = 148 }: { licenseNo: string
     </a>
   );
 }
+
+/**
+ * QR on a consumer purchase bill.
+ *
+ * It encodes a URL carrying an opaque token, NOT the purchase data itself. The
+ * scan therefore resolves against the live record: a batch recalled after the
+ * sale turns the same printed QR red, with nothing on the paper having changed.
+ * Putting the data in the QR would freeze the answer at the moment of printing,
+ * which is exactly the wrong answer to give someone holding the medicine.
+ */
+export function BillQR({ token, size = 148 }: { token: string; size?: number }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [href, setHref] = useState("");
+
+  useEffect(() => {
+    const url = `${window.location.origin}/verify/bill/${encodeURIComponent(token)}`;
+    setHref(url);
+    QRCode.toDataURL(url, { width: size, margin: 1 })
+      .then(setSrc)
+      .catch(() => setSrc(null));
+  }, [token, size]);
+
+  if (!src) return <div style={{ width: size, height: size }} className="rounded bg-slate-100" />;
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className="block">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt="Verify this purchase" width={size} height={size} className="rounded" />
+    </a>
+  );
+}
