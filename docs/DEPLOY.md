@@ -52,6 +52,17 @@ NEXT_PUBLIC_BASE_URL  https://<your-app>.vercel.app
 than sign it with a weak key, so a short value fails loudly at first login
 rather than quietly.
 
+### If the build fails on environment variables
+
+`scripts/check-env.mjs` runs first and names the offending variable directly.
+The most common failure is `DIRECT_URL` present but blank — Vercel keeps a
+variable whose value you never filled in, and Prisma then reports it as a schema
+validation error against `prisma/schema.prisma:16`, which points at the wrong
+thing entirely.
+
+Set every variable for **every environment you deploy** — scoping them to
+Production only means Preview builds fail with the same error.
+
 ## 5. Deploy, then seed once
 
 Deploy. The build migrates the schema but does **not** seed — seeding is
