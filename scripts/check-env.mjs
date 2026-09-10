@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
 // Preflight for the deploy build.
 //
 // Prisma reports a missing or empty directUrl as a P1012 wasm validation error
@@ -7,6 +8,43 @@
 
 const problems = [];
 const warnings = [];
+
+// Load .env when one is present, so this script behaves identically whether it
+// runs locally or on Vercel.
+//
+// Without this it reads process.env only — which means the one script whose
+// entire job is to stop a broken deploy could never be exercised before
+// deploying, and the first time anyone found out whether it worked was in a
+// failing build. Vercel has no .env file, so this is a no-op there.
+//
+// Platform environment ALWAYS wins: a stale local file must never mask what the
+// deploy is actually configured with. Parsed by hand rather than with dotenv,
+// which is not a dependency of this project.
+function loadDotEnv() {
+  let text;
+  try {
+    text = readFileSync(new URL("../.env", import.meta.url), "utf8");
+  } catch {
+    return; // no .env — the normal case in CI and on Vercel
+  }
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq === -1) continue;
+    const key = line.slice(0, eq).trim();
+    if (key in process.env) continue;
+    let value = line.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  }
+}
+loadDotEnv();
 
 // Which Vercel environment this build is running as. A variable ticked only for
 // Production resolves to an EMPTY STRING in a Preview build rather than raising
