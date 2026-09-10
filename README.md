@@ -76,17 +76,14 @@ shortcut:
 
 ## Deploying
 
-The app is deployment-ready for Vercel + Neon with no code changes:
+Full instructions, including the two-connection-string setup Neon requires:
+**[`docs/DEPLOY.md`](./docs/DEPLOY.md)**.
 
-1. Create a Neon database and copy its pooled connection string.
-2. Import the repository into Vercel.
-3. Set `DATABASE_URL`, `JWT_SECRET` (32+ characters) and `NEXT_PUBLIC_BASE_URL`.
-4. The build script runs `prisma generate` before `next build`. Run
-   `npx prisma migrate deploy` and `npx prisma db seed` against the Neon URL once.
-
-The public `/verify` rate limiter is a per-process in-memory bucket. It survives
-neither a redeploy nor multiple serverless instances; a real deployment puts that
-check at the edge.
+The short version: import the repo into Vercel, set `DATABASE_URL` (Neon's
+*pooled* URL, with `?sslmode=require&pgbouncer=true&connection_limit=1`),
+`DIRECT_URL` (Neon's *unpooled* URL, for migrations), `JWT_SECRET` and
+`NEXT_PUBLIC_BASE_URL`. The `vercel-build` script runs `prisma migrate deploy`
+automatically; seed once by hand, since seeding truncates every table.
 
 ## Known limits — state these before being asked
 

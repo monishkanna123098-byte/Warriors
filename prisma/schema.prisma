@@ -5,9 +5,15 @@ generator client {
   provider = "prisma-client-js"
 }
 
+/// DATABASE_URL is the POOLED connection (Neon's "-pooler" host). Serverless
+/// functions open a connection each, so an unpooled URL exhausts Postgres.
+/// DIRECT_URL is the unpooled connection, used only for migrations — PgBouncer
+/// in transaction mode cannot run the DDL and advisory locks migrations need.
+/// Locally, point both at the same database.
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum OrgType {
