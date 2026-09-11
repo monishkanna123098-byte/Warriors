@@ -32,7 +32,7 @@ export default function CdscoPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight">CDSCO reference data</h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-ink-700">
           Imported from published CDSCO exports. This is external ground truth, held separately from
           this system&apos;s own findings — a batch can be clear in our ledger and still be recalled
           on quality, or the reverse.
@@ -41,22 +41,22 @@ export default function CdscoPage() {
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Card className="p-5">
-          <p className="text-xs uppercase tracking-wide text-slate-500">NSQ alerts imported</p>
+          <p className="text-xs uppercase tracking-wide text-ink-500">NSQ alerts imported</p>
           <p className="mt-1 text-4xl font-bold tracking-tight">{data?.nsq.total ?? 0}</p>
         </Card>
         <Card className={`p-5 ${(data?.nsq.matchedInRccp ?? 0) > 0 ? "border-amber-300 bg-amber-50" : ""}`}>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Matching stock we track</p>
+          <p className="text-xs uppercase tracking-wide text-ink-500">Matching stock we track</p>
           <p className="mt-1 text-4xl font-bold tracking-tight text-amber-700">
             {data?.nsq.matchedInRccp ?? 0}
           </p>
-          <p className="mt-1 text-xs text-slate-600">Recalled batches present in this supply chain.</p>
+          <p className="mt-1 text-xs text-ink-700">Recalled batches present in this supply chain.</p>
         </Card>
         <Card className={`p-5 ${(data?.entities.notActive ?? 0) > 0 ? "border-red-300 bg-red-50" : ""}`}>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Licences not ACTIVE</p>
+          <p className="text-xs uppercase tracking-wide text-ink-500">Licences not ACTIVE</p>
           <p className="mt-1 text-4xl font-bold tracking-tight text-red-700">
             {data?.entities.notActive ?? 0}
           </p>
-          <p className="mt-1 text-xs text-slate-600">Suspended or expired in the CDSCO register.</p>
+          <p className="mt-1 text-xs text-ink-700">Suspended or expired in the CDSCO register.</p>
         </Card>
       </div>
 
@@ -88,8 +88,8 @@ export default function CdscoPage() {
                 <Td className="font-medium">{n.medicineName}</Td>
                 <Td className="font-mono">{n.batchNo}</Td>
                 <Td>{n.dateFlagged.slice(0, 10)}</Td>
-                <Td className="max-w-sm whitespace-normal text-xs text-slate-700">{n.reason}</Td>
-                <Td>{n.trackedHere ? <Chip tone="amber">YES</Chip> : <span className="text-xs text-slate-400">—</span>}</Td>
+                <Td className="max-w-sm whitespace-normal text-xs text-ink-700">{n.reason}</Td>
+                <Td>{n.trackedHere ? <Chip tone="amber">YES</Chip> : <span className="text-xs text-ink-400">—</span>}</Td>
               </tr>
             ))}
           </Table>

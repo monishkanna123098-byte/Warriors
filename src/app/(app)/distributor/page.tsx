@@ -78,15 +78,15 @@ export default function DistributorPage() {
         ) : items.length === 0 ? (
           <Empty>Nothing inbound.</Empty>
         ) : (
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-sunken">
             {items.map((r) => (
               <div key={r.id} className="flex flex-wrap items-center gap-4 px-5 py-4">
                 <div className="min-w-56 flex-1">
                   <p className="text-sm font-semibold">{r.product}</p>
-                  <p className="font-mono text-xs text-slate-600">
+                  <p className="font-mono text-xs text-ink-700">
                     {r.batchNo} · {r.manufacturer}
                   </p>
-                  <p className="mt-1 text-xs text-slate-600">
+                  <p className="mt-1 text-xs text-ink-700">
                     {r.retailer} ({r.retailerLicenseNo}) · declared {r.declaredQty ?? "—"} · {r.condition}
                   </p>
                 </div>
@@ -145,7 +145,7 @@ export default function DistributorPage() {
             className={
               shortfall > 0
                 ? "rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
-                : "rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700"
+                : "rounded-md border border-line bg-sunken px-4 py-3 text-sm text-ink-700"
             }
           >
             <p>

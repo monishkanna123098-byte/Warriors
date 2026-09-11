@@ -28,7 +28,7 @@ export default function OverduePage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight">Overdue returns</h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-ink-700">
           Past the SLA deadline and still not initiated. This list does not depend on the retailer
           cooperating — it is what a retailer who simply does nothing looks like.
         </p>
@@ -46,7 +46,7 @@ export default function OverduePage() {
               <tr key={d.district}>
                 <Td className="font-medium">{d.district}</Td>
                 <Td className="font-semibold">{d.count}</Td>
-                <Td className="whitespace-normal text-xs text-slate-600">{d.retailers.join(", ")}</Td>
+                <Td className="whitespace-normal text-xs text-ink-700">{d.retailers.join(", ")}</Td>
               </tr>
             ))}
           </Table>

@@ -80,7 +80,7 @@ export default function HoldsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight">Holds and recalls</h1>
-        <p className="mt-1 max-w-2xl text-sm text-slate-600">
+        <p className="mt-1 max-w-2xl text-sm text-ink-700">
           A recalled batch is blocked at every counter, on the public verify page, and on any
           consumer receipt that carries it — immediately, without the receipt being reprinted.
         </p>
@@ -157,7 +157,7 @@ export default function HoldsPage() {
               <tr key={o.id}>
                 <Td className="font-medium">
                   {o.batchNo}
-                  <span className="block text-xs text-slate-500">
+                  <span className="block text-xs text-ink-500">
                     {o.product} · {o.manufacturer}
                   </span>
                 </Td>
@@ -166,16 +166,16 @@ export default function HoldsPage() {
                     {ACTION_LABEL[o.action] ?? o.action}
                   </Chip>
                   {o.releasesId ? (
-                    <span className="mt-1 block font-mono text-xs text-slate-500">
+                    <span className="mt-1 block font-mono text-xs text-ink-500">
                       lifts {o.releasesId.slice(-8)}
                     </span>
                   ) : null}
                 </Td>
-                <Td className="max-w-md text-slate-700">{o.reason}</Td>
+                <Td className="max-w-md text-ink-700">{o.reason}</Td>
                 <Td>
                   <Chip tone={registryTone[o.registryStatus] ?? "grey"}>{o.registryStatus}</Chip>
                 </Td>
-                <Td className="text-xs text-slate-500">{o.createdAt.slice(0, 16).replace("T", " ")}</Td>
+                <Td className="text-xs text-ink-500">{o.createdAt.slice(0, 16).replace("T", " ")}</Td>
               </tr>
             ))}
           </Table>

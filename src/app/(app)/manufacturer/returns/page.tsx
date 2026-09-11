@@ -76,7 +76,7 @@ export default function UpstreamPage() {
         ) : items.length === 0 ? (
           <Empty>Nothing upstream.</Empty>
         ) : (
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-sunken">
             {items.map((r) => (
               <div key={r.id} className="px-5 py-4">
                 <div className="flex flex-wrap items-center gap-4">
@@ -84,10 +84,10 @@ export default function UpstreamPage() {
                     <p className="text-sm font-semibold">
                       {r.product} · <span className="font-mono">{r.batchNo}</span>
                     </p>
-                    <p className="mt-0.5 text-xs text-slate-600">
+                    <p className="mt-0.5 text-xs text-ink-700">
                       {r.retailer} → {r.distributor}
                     </p>
-                    <p className="mt-1 text-xs text-slate-600">
+                    <p className="mt-1 text-xs text-ink-700">
                       declared {r.declaredQty ?? "—"} · distributor {r.distReceivedQty ?? "—"} ·
                       manufacturer {r.mfgReceivedQty ?? "—"} ·{" "}
                       <strong>confirmed {r.confirmedQty ?? "—"}</strong>
@@ -119,7 +119,7 @@ export default function UpstreamPage() {
                   ) : null}
                 </div>
                 {r.disposals.length > 0 ? (
-                  <div className="mt-3 rounded-md bg-slate-50 px-4 py-2.5 text-xs text-slate-700">
+                  <div className="mt-3 rounded-md bg-sunken px-4 py-2.5 text-xs text-ink-700">
                     {r.disposals.map((d) => (
                       <p key={d.id}>
                         Disposal {d.qty} units · scheduled {d.scheduledDate.slice(0, 10)} ·{" "}

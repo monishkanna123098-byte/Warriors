@@ -75,7 +75,7 @@ export default function AccountabilityPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold tracking-tight">Quantity accountability</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-600">
+          <p className="mt-1 max-w-2xl text-sm text-ink-700">
             Of the units this batch released, how many were sold, how many should have come
             back, and which pharmacies the rest sit behind.
           </p>
@@ -101,7 +101,7 @@ export default function AccountabilityPage() {
                 <p className="text-lg font-bold tracking-tight">
                   {data.batchNo} — {data.product}
                 </p>
-                <p className="text-sm text-slate-600">{data.manufacturer}</p>
+                <p className="text-sm text-ink-700">{data.manufacturer}</p>
               </div>
               <Chip tone={data.expired ? "red" : "green"}>
                 {data.expired ? "Expired" : "In date"} · {data.expiryDate.slice(0, 10)}
@@ -197,9 +197,9 @@ export default function AccountabilityPage() {
                           I7 books do not balance
                         </Chip>
                       ) : null}
-                      <span className="block font-mono text-xs text-slate-500">{l.licenseNo}</span>
+                      <span className="block font-mono text-xs text-ink-500">{l.licenseNo}</span>
                     </Td>
-                    <Td className="text-slate-600">{l.district}</Td>
+                    <Td className="text-ink-700">{l.district}</Td>
                     <Td className="tabular-nums">{l.received.toLocaleString()}</Td>
                     <Td className="tabular-nums">{l.sold.toLocaleString()}</Td>
                     <Td className="tabular-nums">{l.onHand.toLocaleString()}</Td>
@@ -209,7 +209,7 @@ export default function AccountabilityPage() {
                       className={
                         l.unaccounted > 0
                           ? "font-bold tabular-nums text-red-700"
-                          : "tabular-nums text-slate-400"
+                          : "tabular-nums text-ink-400"
                       }
                     >
                       {l.unaccounted.toLocaleString()}
@@ -218,7 +218,7 @@ export default function AccountabilityPage() {
                 ))}
               </Table>
             )}
-            <p className="border-t border-slate-200 px-5 py-3 text-xs text-slate-500">
+            <p className="border-t border-line px-5 py-3 text-xs text-ink-500">
               A gap here means the units were not recorded as returned. That is a question to put
               to the pharmacy, not a finding against it — stock destroyed locally without being
               recorded looks identical to stock diverted.

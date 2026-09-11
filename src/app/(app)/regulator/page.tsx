@@ -18,7 +18,7 @@ function Kpi({ label, value, href, tone }: { label: string; value: number; href:
   return (
     <Link href={href}>
       <Card className={cn("p-5 transition hover:shadow-md", tone)}>
-        <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+        <p className="text-xs uppercase tracking-wide text-ink-500">{label}</p>
         <p className="mt-2 text-4xl font-bold tracking-tight">{value}</p>
       </Card>
     </Link>
@@ -76,14 +76,14 @@ export default function RegulatorPage() {
               <p className={cn("text-lg font-semibold", audit.valid ? "text-emerald-700" : "text-red-700")}>
                 {audit.valid ? `Intact — ${audit.count} events` : `BROKEN at event ${audit.brokenAtId}`}
               </p>
-              <p className="mt-2 max-w-2xl text-sm text-slate-600">
+              <p className="mt-2 max-w-2xl text-sm text-ink-700">
                 This proves the digital record was not altered after the fact. It does not prove that
                 physical destruction occurred — the certificate is an attestation with an enforced
                 quantity ceiling, not independent evidence of incineration.
               </p>
             </>
           ) : (
-            <p className="text-sm text-slate-500">Checking…</p>
+            <p className="text-sm text-ink-500">Checking…</p>
           )}
         </div>
       </Card>

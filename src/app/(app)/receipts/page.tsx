@@ -39,25 +39,25 @@ export default function ReceiptsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight">Compliance receipts</h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-ink-700">
           Every decision this system makes leaves a receipt saying whether the stock was acceptable
           and why. Receipts are permanent — they are never edited, reissued or withdrawn.
         </p>
       </div>
 
       <Card className={cn("p-5", (data?.expiredCount ?? 0) > 0 && "border-red-300 bg-red-50")}>
-        <p className="text-xs uppercase tracking-wide text-slate-500">
+        <p className="text-xs uppercase tracking-wide text-ink-500">
           Batches flagged not acceptable
         </p>
         <p
           className={cn(
             "mt-1 text-4xl font-bold tracking-tight",
-            (data?.expiredCount ?? 0) > 0 ? "text-red-700" : "text-slate-900",
+            (data?.expiredCount ?? 0) > 0 ? "text-red-700" : "text-ink-900",
           )}
         >
           {filter === "EXPIRED" ? items.length : (data?.expiredCount ?? 0)}
         </p>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-ink-700">
           Each one was refused at the point of decision. None can be overridden.
         </p>
       </Card>
@@ -70,8 +70,8 @@ export default function ReceiptsPage() {
             className={cn(
               "rounded-full border px-3.5 py-1.5 text-xs font-medium",
               filter === f
-                ? "border-slate-900 bg-slate-900 text-white"
-                : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
+                ? "border-ink-900 bg-ink-900 text-white"
+                : "border-line-strong bg-surface text-ink-700 hover:bg-sunken",
             )}
           >
             {f === "EXPIRED" ? "Not acceptable" : f === "OK" ? "Clear" : "All"}
@@ -97,7 +97,7 @@ export default function ReceiptsPage() {
                 <Td className="font-medium">{b.product}</Td>
                 <Td className="font-mono">{b.batchNo}</Td>
                 <Td>{b.quantity}</Td>
-                <Td className="max-w-md whitespace-normal text-xs text-slate-700">
+                <Td className="max-w-md whitespace-normal text-xs text-ink-700">
                   {b.anomalyCodes.length > 0 ? (
                     <span className="mr-1.5 font-mono font-semibold">
                       {b.anomalyCodes.join(", ")}

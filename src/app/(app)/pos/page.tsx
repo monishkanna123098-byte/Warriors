@@ -97,7 +97,7 @@ export default function PosPage() {
     <div className="mx-auto max-w-5xl space-y-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight">POS terminal</h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-ink-700">
           Every scan is decided on the server clock and written to the scan log whatever the verdict.
         </p>
       </div>
@@ -142,7 +142,7 @@ export default function PosPage() {
           ) : null}
 
           {result.batch ? (
-            <dl className="mx-auto mt-7 grid max-w-2xl grid-cols-2 gap-x-6 gap-y-2 border-t border-slate-300/60 pt-5 text-left text-sm md:grid-cols-4">
+            <dl className="mx-auto mt-7 grid max-w-2xl grid-cols-2 gap-x-6 gap-y-2 border-t border-line-strong/60 pt-5 text-left text-sm md:grid-cols-4">
               {[
                 ["Product", result.batch.product],
                 ["Batch", result.batch.batchNo],
@@ -154,8 +154,8 @@ export default function PosPage() {
                 ["Decided at", new Date(result.serverTs).toLocaleTimeString()],
               ].map(([k, v]) => (
                 <div key={k}>
-                  <dt className="text-xs uppercase tracking-wide text-slate-500">{k}</dt>
-                  <dd className="font-medium text-slate-900">{v}</dd>
+                  <dt className="text-xs uppercase tracking-wide text-ink-500">{k}</dt>
+                  <dd className="font-medium text-ink-900">{v}</dd>
                 </div>
               ))}
             </dl>
@@ -222,8 +222,8 @@ export default function PosPage() {
       ) : null}
 
       {hardBlocked ? (
-        <Card className="border-slate-300 p-5">
-          <p className="text-sm text-slate-700">
+        <Card className="border-line-strong p-5">
+          <p className="text-sm text-ink-700">
             The terminal is blocked on this item. You may start a different one — the refusal above
             stays on the record either way.
           </p>
@@ -267,8 +267,8 @@ export default function PosPage() {
                   className={cn(
                     "flex-1 rounded-md border px-3 py-2 text-sm font-medium",
                     context === c
-                      ? "border-slate-900 bg-slate-900 text-white"
-                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
+                      ? "border-ink-900 bg-ink-900 text-white"
+                      : "border-line-strong bg-surface text-ink-700 hover:bg-sunken",
                   )}
                 >
                   {c}

@@ -48,7 +48,16 @@ export default function TransfersPage() {
   const inventory = useApi<{ items: { batchId: string; batchNo: string; product: string; qty: number }[] }>(
     "/api/inventory",
   );
-  const batches = useApi<{ items: BatchRow[] }>("/api/batches");
+
+  // A manufacturer dispatches from its own register; everyone else from what is
+  // physically on their shelf. Asking for the register regardless worked — the
+  // page fell back to inventory on the 403 — but it fired a forbidden request on
+  // every load for every retailer and distributor, which logs a console error
+  // and reads as a bug to anyone with devtools open.
+  const me = useApi<{ organization: { type: string } }>("/api/me");
+  const canReadRegister =
+    me.data?.organization.type === "MANUFACTURER" || me.data?.organization.type === "REGULATOR";
+  const batches = useApi<{ items: BatchRow[] }>(canReadRegister ? "/api/batches" : null);
 
   const [batchId, setBatchId] = useState("");
   const [toOrgId, setToOrgId] = useState("");
@@ -58,8 +67,6 @@ export default function TransfersPage() {
   const [result, setResult] = useState<{ message: string; authorized: boolean; senderBalanceAfter: number } | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // A manufacturer dispatches from its own register; everyone else from what is
-  // physically on their shelf.
   const options =
     (batches.data?.items ?? []).length > 0
       ? (batches.data?.items ?? []).map((b) => ({ id: b.id, label: `${b.batchNo} — ${b.product}` }))
@@ -91,7 +98,7 @@ export default function TransfersPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight">Transfer stock</h1>
-        <p className="mt-1 max-w-2xl text-sm text-slate-600">
+        <p className="mt-1 max-w-2xl text-sm text-ink-700">
           Every transfer writes both halves — units out of one organisation and into another, in
           one transaction. Quantity cannot appear or vanish because stock changed hands.
         </p>
@@ -166,10 +173,10 @@ export default function TransfersPage() {
                 </Td>
                 <Td className="font-medium">
                   {t.batchNo}
-                  <span className="block text-xs text-slate-500">{t.product}</span>
+                  <span className="block text-xs text-ink-500">{t.product}</span>
                 </Td>
-                <Td className="text-slate-600">{t.from}</Td>
-                <Td className="text-slate-600">{t.to}</Td>
+                <Td className="text-ink-700">{t.from}</Td>
+                <Td className="text-ink-700">{t.to}</Td>
                 <Td className="tabular-nums">{t.qty.toLocaleString()}</Td>
                 <Td>
                   {t.authorized ? (
@@ -178,7 +185,7 @@ export default function TransfersPage() {
                     <Chip tone="red">No authorised route</Chip>
                   )}
                 </Td>
-                <Td className="text-xs text-slate-500">{t.serverTs.slice(0, 16).replace("T", " ")}</Td>
+                <Td className="text-xs text-ink-500">{t.serverTs.slice(0, 16).replace("T", " ")}</Td>
               </tr>
             ))}
           </Table>

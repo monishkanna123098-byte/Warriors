@@ -62,7 +62,7 @@ export default function MyReturnsPage() {
                       <span
                         className={cn(
                           "flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold",
-                          t.reached ? "bg-slate-900 text-white" : "bg-slate-200 text-slate-400",
+                          t.reached ? "bg-ink-900 text-white" : "bg-line text-ink-400",
                         )}
                       >
                         {i + 1}
@@ -70,7 +70,7 @@ export default function MyReturnsPage() {
                       <span
                         className={cn(
                           "mt-1.5 w-20 text-center text-[11px]",
-                          t.reached ? "font-medium text-slate-900" : "text-slate-400",
+                          t.reached ? "font-medium text-ink-900" : "text-ink-400",
                         )}
                       >
                         {SHORT[t.state]}
@@ -80,7 +80,7 @@ export default function MyReturnsPage() {
                       <span
                         className={cn(
                           "mx-1 mb-5 h-0.5 w-6",
-                          r.timeline[i + 1].reached ? "bg-slate-900" : "bg-slate-200",
+                          r.timeline[i + 1].reached ? "bg-ink-900" : "bg-line",
                         )}
                       />
                     ) : null}
@@ -88,7 +88,7 @@ export default function MyReturnsPage() {
                 ))}
               </ol>
 
-              <dl className="mt-6 grid grid-cols-2 gap-4 border-t border-slate-100 pt-4 text-sm md:grid-cols-4">
+              <dl className="mt-6 grid grid-cols-2 gap-4 border-t border-sunken pt-4 text-sm md:grid-cols-4">
                 {[
                   ["Declared", r.declaredQty],
                   ["Distributor received", r.distReceivedQty],
@@ -96,7 +96,7 @@ export default function MyReturnsPage() {
                   ["Confirmed", r.confirmedQty],
                 ].map(([k, v]) => (
                   <div key={String(k)}>
-                    <dt className="text-xs uppercase tracking-wide text-slate-500">{k}</dt>
+                    <dt className="text-xs uppercase tracking-wide text-ink-500">{k}</dt>
                     <dd className="font-semibold">{v ?? "—"}</dd>
                   </div>
                 ))}
@@ -114,7 +114,7 @@ export default function MyReturnsPage() {
               ) : null}
 
               {r.certificates.length > 0 ? (
-                <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+                <div className="mt-4 rounded-md border border-line bg-sunken px-4 py-3 text-sm">
                   {r.certificates.map((c) => (
                     <p key={c.id} className="font-mono text-xs">
                       {c.certNo} — {c.qty} units

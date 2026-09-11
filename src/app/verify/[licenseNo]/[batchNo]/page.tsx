@@ -92,7 +92,7 @@ export default async function VerifyPage({
 
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col px-4 py-8">
-      <p className="text-center text-xs font-semibold uppercase tracking-widest text-slate-500">
+      <p className="text-center text-xs font-semibold uppercase tracking-widest text-ink-500">
         Batch verification
       </p>
 
@@ -105,7 +105,7 @@ export default async function VerifyPage({
       </div>
 
       {batch ? (
-        <dl className="mt-6 divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white text-sm">
+        <dl className="mt-6 divide-y divide-line rounded-xl border border-line bg-surface text-sm">
           {[
             ["Product", `${batch.product.name} (${batch.product.form})`],
             ["Manufacturer", batch.manufacturer.name],
@@ -113,13 +113,13 @@ export default async function VerifyPage({
             ["Expiry", batch.expiryDate.toISOString().slice(0, 10)],
           ].map(([k, v]) => (
             <div key={k} className="flex justify-between gap-4 px-4 py-3">
-              <dt className="text-slate-500">{k}</dt>
-              <dd className="text-right font-medium text-slate-900">{v}</dd>
+              <dt className="text-ink-500">{k}</dt>
+              <dd className="text-right font-medium text-ink-900">{v}</dd>
             </div>
           ))}
         </dl>
       ) : (
-        <div className="mt-6 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+        <div className="mt-6 rounded-xl border border-line bg-surface px-4 py-3 text-sm text-ink-700">
           Searched for licence <span className="font-mono">{licenseNo}</span>.
         </div>
       )}
@@ -131,7 +131,7 @@ export default async function VerifyPage({
           }`}
         >
           <div className="flex items-center justify-between gap-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+            <p className="text-xs font-semibold uppercase tracking-wider text-ink-700">
               Last compliance check
             </p>
             <span
@@ -149,7 +149,7 @@ export default async function VerifyPage({
           >
             {bill.anomalyNote ?? "No compliance findings were recorded against this batch."}
           </p>
-          <p className="mt-2 text-xs text-slate-600">
+          <p className="mt-2 text-xs text-ink-700">
             Recorded {bill.generatedAt.toISOString().slice(0, 10)}. This receipt is permanent — it is
             never edited or withdrawn.
           </p>
@@ -159,34 +159,34 @@ export default async function VerifyPage({
       {nsq ? (
         <section
           className={`mt-4 rounded-xl border-2 px-4 py-4 ${
-            nsq.flagged ? "border-amber-400 bg-amber-50" : "border-slate-200 bg-white"
+            nsq.flagged ? "border-amber-400 bg-amber-50" : "border-line bg-surface"
           }`}
         >
           <div className="flex items-center justify-between gap-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+            <p className="text-xs font-semibold uppercase tracking-wider text-ink-700">
               CDSCO quality alert
             </p>
             <span
               className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                nsq.flagged ? "bg-amber-600 text-white" : "bg-slate-200 text-slate-700"
+                nsq.flagged ? "bg-amber-600 text-white" : "bg-line text-ink-700"
               }`}
             >
               {nsq.flagged ? "NSQ FLAGGED" : "NOT FLAGGED"}
             </span>
           </div>
           <p
-            className={`mt-2 text-sm leading-relaxed ${nsq.flagged ? "font-medium text-amber-900" : "text-slate-600"}`}
+            className={`mt-2 text-sm leading-relaxed ${nsq.flagged ? "font-medium text-amber-900" : "text-ink-700"}`}
           >
             {nsq.message}
           </p>
-          <p className="mt-2 text-xs text-slate-600">
+          <p className="mt-2 text-xs text-ink-700">
             This is the drug regulator&apos;s own quality finding. It is a separate question from the
             compliance check above, and one can be clear while the other is not.
           </p>
         </section>
       ) : null}
 
-      <p className="mt-6 text-center text-xs leading-relaxed text-slate-500">
+      <p className="mt-6 text-center text-xs leading-relaxed text-ink-500">
         Checked against the manufacturer&apos;s issued batch registry at{" "}
         {now.toISOString().slice(0, 16).replace("T", " ")} UTC. This service records batch status; it
         cannot confirm that a physical pack is genuine.

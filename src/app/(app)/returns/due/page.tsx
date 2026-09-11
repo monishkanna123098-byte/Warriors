@@ -58,7 +58,7 @@ export default function ReturnsDuePage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight">Returns due</h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-ink-700">
           Raised automatically once a batch passes expiry. Confirming a return needs a quantity,
           a condition note and photographic evidence — that is a human act, not an automatic one.
         </p>
@@ -80,10 +80,10 @@ export default function ReturnsDuePage() {
               className={cn("p-5", r.overdue ? "border-red-300 bg-red-50/40" : "border-amber-300 bg-amber-50/30")}
             >
               <p className="text-sm font-semibold">{r.product}</p>
-              <p className="font-mono text-xs text-slate-600">
+              <p className="font-mono text-xs text-ink-700">
                 {r.batchNo} · {r.manufacturer}
               </p>
-              <p className="mt-3 text-xs text-slate-600">Expired {r.expiryDate.slice(0, 10)}</p>
+              <p className="mt-3 text-xs text-ink-700">Expired {r.expiryDate.slice(0, 10)}</p>
               <p
                 className={cn(
                   "mt-1 text-2xl font-bold tracking-tight",
@@ -92,8 +92,8 @@ export default function ReturnsDuePage() {
               >
                 {r.overdue ? `${Math.abs(r.daysToDue)} days overdue` : `${r.daysToDue} days left`}
               </p>
-              <p className="text-xs text-slate-500">SLA deadline {r.dueBy.slice(0, 10)}</p>
-              <p className="mt-3 text-xs text-slate-600">Route: {r.distributor}</p>
+              <p className="text-xs text-ink-500">SLA deadline {r.dueBy.slice(0, 10)}</p>
+              <p className="mt-3 text-xs text-ink-700">Route: {r.distributor}</p>
               <Button
                 className="mt-4 w-full"
                 onClick={() => {

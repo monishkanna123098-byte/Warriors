@@ -53,7 +53,7 @@ export default function BatchLookupPage() {
                 <Td>{b.product}</Td>
                 <Td>
                   {b.manufacturer}
-                  <span className="block font-mono text-xs text-slate-500">{b.manufacturerLicenseNo}</span>
+                  <span className="block font-mono text-xs text-ink-500">{b.manufacturerLicenseNo}</span>
                 </Td>
                 <Td>{b.issuedQty}</Td>
                 <Td>{b.expiryDate.slice(0, 10)}</Td>
@@ -66,7 +66,7 @@ export default function BatchLookupPage() {
                     segments={[
                       { label: "billed", value: b.health.billed, className: "bg-blue-500" },
                       { label: "returned", value: b.health.returned, className: "bg-amber-500" },
-                      { label: "destroyed", value: b.health.destroyed, className: "bg-slate-700" },
+                      { label: "destroyed", value: b.health.destroyed, className: "bg-ink-700" },
                       { label: "unaccounted", value: b.health.leaked, className: "bg-red-500" },
                     ]}
                   />

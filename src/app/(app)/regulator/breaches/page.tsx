@@ -26,7 +26,7 @@ export default function BreachesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight">Books that do not balance</h1>
-        <p className="mt-1 max-w-2xl text-sm text-slate-600">
+        <p className="mt-1 max-w-2xl text-sm text-ink-700">
           I7. A location that has sold or shipped more units of a batch than ever reached it.
         </p>
       </div>
@@ -47,16 +47,16 @@ export default function BreachesPage() {
               <tr key={`${b.batchId}:${b.licenseNo}`} className="bg-red-50/60">
                 <Td className="font-medium">
                   {b.orgName}
-                  <span className="block font-mono text-xs text-slate-500">{b.licenseNo}</span>
+                  <span className="block font-mono text-xs text-ink-500">{b.licenseNo}</span>
                 </Td>
                 <Td>
                   {b.batchNo}
-                  <span className="block text-xs text-slate-500">{b.product}</span>
+                  <span className="block text-xs text-ink-500">{b.product}</span>
                 </Td>
                 <Td className="tabular-nums">{b.balance.inbound.toLocaleString()}</Td>
                 <Td className="tabular-nums">{b.balance.outbound.toLocaleString()}</Td>
                 <Td className="font-bold tabular-nums text-red-700">{b.balance.balance}</Td>
-                <Td className="font-mono text-xs text-slate-600">
+                <Td className="font-mono text-xs text-ink-700">
                   {Object.entries(b.balance.byEvent)
                     .map(([k, v]) => `${k} ${v}`)
                     .join(" · ")}
@@ -65,7 +65,7 @@ export default function BreachesPage() {
             ))}
           </Table>
         )}
-        <p className="border-t border-slate-200 px-5 py-3 text-xs text-slate-600">
+        <p className="border-t border-line px-5 py-3 text-xs text-ink-700">
           {data?.caveat ??
             "A negative balance is an accounting inconsistency, not proof of diversion."}{" "}
           The most common cause is an inbound record that was never captured — check that before

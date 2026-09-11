@@ -4,8 +4,166 @@
 
 :root {
   color-scheme: light;
+  /* Height of the fixed marketing navbar, so anchor scrolling lands correctly. */
+  --nav-h: 4rem;
 }
 
-body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    /* Anchored sections must clear the fixed navbar, not hide under it. */
+    scroll-padding-top: calc(var(--nav-h) + 1.5rem);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-paper text-ink-900 antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* One focus treatment everywhere. Removing an outline without replacing it is
+     the single most common way a keyboard user loses their place on a page. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-pine-600 ring-offset-2 ring-offset-paper;
+    border-radius: 0.375rem;
+  }
+
+  ::selection {
+    @apply bg-pine-100 text-pine-900;
+  }
+
+  /* Tabular figures wherever numbers are compared down a column. Proportional
+     digits make a quantity table impossible to scan. */
+  .tabular-nums,
+  td,
+  th {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* ---------------------------------------------------------------------
+     Scroll reveal
+     Driven by IntersectionObserver in src/components/reveal.tsx, which adds
+     .is-visible. Kept in CSS rather than JS so the transition runs on the
+     compositor and never touches the main thread while scrolling.
+     --------------------------------------------------------------------- */
+  .reveal {
+    opacity: 0;
+    transform: translateY(16px);
+    transition:
+      opacity 600ms cubic-bezier(0.16, 1, 0.3, 1),
+      transform 600ms cubic-bezier(0.16, 1, 0.3, 1);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+  .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* ---------------------------------------------------------------------
+     Flip card
+     A real 3D rotation rather than a crossfade, because the back face has to
+     read as the other side of the same object. `backface-visibility` is what
+     stops the reversed text showing through mid-turn.
+     --------------------------------------------------------------------- */
+  .flip {
+    perspective: 1400px;
+  }
+  .flip-inner {
+    position: relative;
+    transform-style: preserve-3d;
+    transition: transform 620ms cubic-bezier(0.65, 0, 0.35, 1);
+  }
+  /* Hover for a mouse, focus-within for a keyboard, and .is-flipped for a tap —
+     a touch device has no hover, so without the third the back face would be
+     unreachable on every phone. */
+  .flip:hover .flip-inner,
+  .flip:focus-within .flip-inner,
+  .flip-inner.is-flipped {
+    transform: rotateY(180deg);
+  }
+  .flip-face {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+  .flip-back {
+    position: absolute;
+    inset: 0;
+    transform: rotateY(180deg);
+  }
+
+  /* Hairline that fades at both ends — a section divider that does not look
+     like a table rule. */
+  .rule-fade {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, theme("colors.line.strong"), transparent);
+  }
+
+  /* Skeleton shimmer for loading states. */
+  .skeleton {
+    @apply relative overflow-hidden rounded bg-sunken;
+  }
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+    animation: shimmer 1.6s infinite;
+  }
+  @keyframes shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+}
+
+@layer utilities {
+  /* Fine dot grid for section backgrounds. Sits behind content at low alpha;
+     anything stronger competes with the text it is meant to sit under. */
+  .bg-dots {
+    background-image: radial-gradient(theme("colors.line.strong") 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
+  /* Masks a decorative layer out towards the edges so it never collides with
+     the content column. */
+  .mask-fade-b {
+    -webkit-mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
+  }
+}
+
+/* -----------------------------------------------------------------------
+   Reduced motion
+   Not a nicety: vestibular disorders make large parallax and slide-in motion
+   genuinely unpleasant. Everything still ARRIVES — opacity and final position
+   are preserved — it just stops moving to get there.
+   ----------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+  }
+  .flip:hover .flip-inner,
+  .flip:focus-within .flip-inner,
+  .flip-inner.is-flipped {
+    /* Still turns, just instantly — the back face must stay reachable. */
+    transform: rotateY(180deg);
+  }
+  .skeleton::after {
+    animation: none;
+  }
 }

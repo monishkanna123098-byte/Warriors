@@ -33,7 +33,7 @@ const TONE: Record<string, { card: string; band: string; text: string }> = {
   RECALLED: { card: "border-red-400 bg-red-50", band: "bg-red-700", text: "text-red-900" },
   DESTROYED: { card: "border-red-400 bg-red-50", band: "bg-red-700", text: "text-red-900" },
   HELD: { card: "border-amber-300 bg-amber-50", band: "bg-amber-500", text: "text-amber-900" },
-  UNKNOWN: { card: "border-slate-400 bg-slate-100", band: "bg-slate-600", text: "text-slate-900" },
+  UNKNOWN: { card: "border-ink-400 bg-sunken", band: "bg-ink-700", text: "text-ink-900" },
 };
 
 const REASONS = [
@@ -85,13 +85,13 @@ export default function ConsumerBillPage({ params }: { params: { token: string }
     }
   }
 
-  if (loading) return <Shell><p className="text-slate-600">Checking…</p></Shell>;
+  if (loading) return <Shell><p className="text-ink-700">Checking…</p></Shell>;
   if (error || !data)
     return (
       <Shell>
-        <div className="rounded-xl border-2 border-slate-400 bg-slate-100 p-6">
-          <p className="text-2xl font-bold text-slate-900">No record found</p>
-          <p className="mt-2 text-slate-700">
+        <div className="rounded-xl border-2 border-ink-400 bg-sunken p-6">
+          <p className="text-2xl font-bold text-ink-900">No record found</p>
+          <p className="mt-2 text-ink-700">
             This code does not match any purchase we hold. Do not take the medicine. Take it back
             to the pharmacy and ask them to check the batch number.
           </p>
@@ -102,15 +102,15 @@ export default function ConsumerBillPage({ params }: { params: { token: string }
   return (
     <Shell>
       <div className="mb-6">
-        <p className="text-xs uppercase tracking-wide text-slate-500">Your purchase</p>
+        <p className="text-xs uppercase tracking-wide text-ink-500">Your purchase</p>
         <h1 className="text-2xl font-bold tracking-tight">{data.billNo}</h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-ink-700">
           {data.pharmacy} · bought {data.purchaseDisplay}
         </p>
       </div>
 
-      <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+      <div className="mb-6 rounded-lg border border-line bg-surface p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink-500">
           Check as if it were
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
@@ -120,8 +120,8 @@ export default function ConsumerBillPage({ params }: { params: { token: string }
               onClick={() => setDays(l.days)}
               className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
                 days === l.days
-                  ? "bg-slate-900 text-white"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  ? "bg-ink-900 text-white"
+                  : "bg-sunken text-ink-700 hover:bg-line"
               }`}
             >
               {l.label}
@@ -135,7 +135,7 @@ export default function ConsumerBillPage({ params }: { params: { token: string }
             changed — the expiry date and the purchase record are exactly as they were.
           </p>
         ) : (
-          <p className="mt-3 text-xs text-slate-500">
+          <p className="mt-3 text-xs text-ink-500">
             Checked against the real date and time on our server, not on your phone.
           </p>
         )}
@@ -157,10 +157,10 @@ export default function ConsumerBillPage({ params }: { params: { token: string }
               <div className={`h-2 w-full ${tone.band}`} />
               <div className="p-5">
                 <p className={`text-xl font-bold tracking-tight ${tone.text}`}>{l.headline}</p>
-                <p className="mt-2 text-lg font-semibold text-slate-900">{l.product}</p>
-                <p className="text-sm text-slate-700">{l.explanation}</p>
+                <p className="mt-2 text-lg font-semibold text-ink-900">{l.product}</p>
+                <p className="text-sm text-ink-700">{l.explanation}</p>
 
-                <p className="mt-3 rounded bg-white/70 px-3 py-2 text-sm font-medium text-slate-900">
+                <p className="mt-3 rounded bg-surface/70 px-3 py-2 text-sm font-medium text-ink-900">
                   {l.action}
                 </p>
 
@@ -173,7 +173,7 @@ export default function ConsumerBillPage({ params }: { params: { token: string }
 
                 <button
                   onClick={() => setReporting(l)}
-                  className="mt-4 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+                  className="mt-4 rounded-lg border border-line-strong bg-surface px-4 py-2 text-sm font-semibold text-ink-900 hover:bg-sunken"
                 >
                   Report this medicine
                 </button>
@@ -185,9 +185,9 @@ export default function ConsumerBillPage({ params }: { params: { token: string }
 
       {reporting ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
-          <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
+          <div className="w-full max-w-lg rounded-xl bg-surface p-5 shadow-xl">
             <h2 className="text-lg font-bold">Report {reporting.batchNo}</h2>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-ink-700">
               No account needed. Your report goes to the drugs controller as something to look
               into.
             </p>
@@ -196,7 +196,7 @@ export default function ConsumerBillPage({ params }: { params: { token: string }
               {REASONS.map(([value, label]) => (
                 <label
                   key={value}
-                  className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
+                  className="flex cursor-pointer items-center gap-3 rounded-lg border border-line px-3 py-2 text-sm hover:bg-sunken"
                 >
                   <input
                     type="radio"
@@ -214,20 +214,20 @@ export default function ConsumerBillPage({ params }: { params: { token: string }
               onChange={(e) => setNote(e.target.value)}
               rows={3}
               placeholder="Anything else you noticed (optional)"
-              className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              className="mt-3 w-full rounded-lg border border-line-strong px-3 py-2 text-sm"
             />
 
             <div className="mt-4 flex justify-end gap-2">
               <button
                 onClick={() => setReporting(null)}
-                className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                className="rounded-lg px-4 py-2 text-sm font-medium text-ink-700 hover:bg-sunken"
               >
                 Cancel
               </button>
               <button
                 onClick={report}
                 disabled={busy}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className="rounded-lg bg-ink-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 {busy ? "Sending…" : "Send report"}
               </button>
@@ -242,17 +242,17 @@ export default function ConsumerBillPage({ params }: { params: { token: string }
 function Detail({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wide text-slate-500">{label}</dt>
-      <dd className={`font-medium text-slate-900 ${mono ? "font-mono" : ""}`}>{value}</dd>
+      <dt className="text-xs uppercase tracking-wide text-ink-500">{label}</dt>
+      <dd className={`font-medium text-ink-900 ${mono ? "font-mono" : ""}`}>{value}</dd>
     </div>
   );
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto min-h-screen w-full max-w-2xl bg-slate-50 px-4 py-8">
+    <main className="mx-auto min-h-screen w-full max-w-2xl bg-sunken px-4 py-8">
       {children}
-      <p className="mt-8 border-t border-slate-200 pt-4 text-xs text-slate-500">
+      <p className="mt-8 border-t border-line pt-4 text-xs text-ink-500">
         RCCP · Reverse Chain Compliance Platform. This page shows what was recorded when the
         medicine was dispensed and its status right now. It cannot tell you about medicine nobody
         recorded.

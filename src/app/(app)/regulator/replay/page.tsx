@@ -48,7 +48,7 @@ export default function ReplayPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold tracking-tight">Forensic replay</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-600">
+          <p className="mt-1 max-w-2xl text-sm text-ink-700">
             One batch, every recorded event, in the order it happened. Each row is read from a
             stored record — nothing here is reconstructed or inferred.
           </p>
@@ -79,27 +79,32 @@ export default function ReplayPage() {
               )
             }
           />
-          <ol className="divide-y divide-slate-100">
+          <ol className="divide-y divide-sunken">
             {data.events.map((e, i) => (
               <li
                 key={`${e.at}:${i}`}
-                className={`flex gap-4 px-5 py-3 ${e.firstInconsistency ? "bg-red-50" : ""}`}
+                className={`flex flex-col gap-1.5 px-5 py-3 sm:flex-row sm:gap-4 ${e.firstInconsistency ? "bg-red-50" : ""}`}
               >
-                <div className="w-36 shrink-0 font-mono text-xs text-slate-500">
-                  {e.at.slice(0, 16).replace("T", " ")}
-                </div>
-                <div className="w-24 shrink-0">
-                  <Chip tone={KIND_TONE[e.kind] ?? "grey"}>{e.kind}</Chip>
+                {/* Side by side once there is room; stacked below that, because
+                    144px + 96px of fixed columns leaves nothing for content on a
+                    320px screen. */}
+                <div className="flex items-center gap-3 sm:contents">
+                  <div className="font-mono text-xs text-ink-500 sm:w-36 sm:shrink-0">
+                    {e.at.slice(0, 16).replace("T", " ")}
+                  </div>
+                  <div className="sm:w-24 sm:shrink-0">
+                    <Chip tone={KIND_TONE[e.kind] ?? "grey"}>{e.kind}</Chip>
+                  </div>
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium text-slate-900">
+                  <p className="break-words font-medium text-ink-900">
                     {e.event}
                     {e.qty !== null ? (
-                      <span className="ml-2 tabular-nums text-slate-600">{e.qty.toLocaleString()} units</span>
+                      <span className="ml-2 tabular-nums text-ink-700">{e.qty.toLocaleString()} units</span>
                     ) : null}
-                    {e.org ? <span className="ml-2 text-slate-600">· {e.org}</span> : null}
+                    {e.org ? <span className="ml-2 text-ink-700">· {e.org}</span> : null}
                   </p>
-                  <p className="text-sm text-slate-600">{e.detail}</p>
+                  <p className="text-sm text-ink-700">{e.detail}</p>
                   {e.rule ? (
                     <p className="mt-0.5 font-mono text-xs text-red-700">{e.rule}</p>
                   ) : null}
@@ -107,7 +112,7 @@ export default function ReplayPage() {
               </li>
             ))}
           </ol>
-          <p className="border-t border-slate-200 px-5 py-3 text-xs text-slate-600">{data.limits}</p>
+          <p className="border-t border-line px-5 py-3 text-xs text-ink-700">{data.limits}</p>
         </Card>
       )}
     </div>

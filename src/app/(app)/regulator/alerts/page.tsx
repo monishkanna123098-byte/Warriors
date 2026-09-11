@@ -40,8 +40,8 @@ export default function AlertsPage() {
             className={cn(
               "rounded-full border px-3.5 py-1.5 text-xs font-medium",
               level === l
-                ? "border-slate-900 bg-slate-900 text-white"
-                : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
+                ? "border-ink-900 bg-ink-900 text-white"
+                : "border-line-strong bg-surface text-ink-700 hover:bg-sunken",
             )}
           >
             {l}
@@ -67,12 +67,12 @@ export default function AlertsPage() {
                 <Td>{a.manufacturer ?? "—"}</Td>
                 <Td>
                   {a.orgName ?? "—"}
-                  {a.district ? <span className="text-xs text-slate-500"> · {a.district}</span> : null}
+                  {a.district ? <span className="text-xs text-ink-500"> · {a.district}</span> : null}
                 </Td>
                 <Td className="text-xs">{new Date(a.createdAt).toLocaleString()}</Td>
                 <Td>
                   {a.acknowledgedAt ? (
-                    <span className="text-xs text-slate-500">acknowledged</span>
+                    <span className="text-xs text-ink-500">acknowledged</span>
                   ) : (
                     <Button
                       variant="ghost"
@@ -91,7 +91,7 @@ export default function AlertsPage() {
         )}
       </Card>
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-ink-500">
         Acknowledging records that the alert was reviewed. It does not close any related leakage
         record — missing units are never closed by an approval.
       </p>

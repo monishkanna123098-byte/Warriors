@@ -75,7 +75,7 @@ export default function ManufacturerPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold tracking-tight">Issued batch registry</h1>
-          <p className="mt-1 text-sm text-slate-600">
+          <p className="mt-1 text-sm text-ink-700">
             The issued quantity is the ceiling every mass-balance check is measured against.
           </p>
         </div>
@@ -106,19 +106,19 @@ export default function ManufacturerPage() {
               />
               <div className="flex gap-5 px-5 py-5">
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Batch health</p>
+                  <p className="text-xs uppercase tracking-wide text-ink-500">Batch health</p>
                   <div className="mt-2">
                     <StackedBar
                       total={b.health.issued}
                       segments={[
                         { label: "billed", value: b.health.billed, className: "bg-blue-500" },
                         { label: "returned", value: b.health.returned, className: "bg-amber-500" },
-                        { label: "destroyed", value: b.health.destroyed, className: "bg-slate-700" },
+                        { label: "destroyed", value: b.health.destroyed, className: "bg-ink-700" },
                         { label: "unaccounted", value: b.health.leaked, className: "bg-red-500" },
                       ]}
                     />
                   </div>
-                  <p className="mt-3 text-xs text-slate-600">
+                  <p className="mt-3 text-xs text-ink-700">
                     Issued {b.health.issued} · headroom {Math.max(0, b.health.issued - b.health.billed)}
                   </p>
                   {b.destroyedAt ? (
@@ -129,7 +129,7 @@ export default function ManufacturerPage() {
                 </div>
                 <div className="shrink-0 text-center">
                   <VerifyQR licenseNo={b.manufacturerLicenseNo} batchNo={b.batchNo} size={110} />
-                  <p className="mt-1.5 text-[11px] text-slate-500">Scan to verify</p>
+                  <p className="mt-1.5 text-[11px] text-ink-500">Scan to verify</p>
                 </div>
               </div>
             </Card>

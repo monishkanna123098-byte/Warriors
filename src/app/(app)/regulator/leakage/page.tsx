@@ -33,13 +33,13 @@ export default function RegLeakagePage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight">Leakage by organisation</h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-ink-700">
           A single shortfall is noise. Repeated leakage against the same pair is the signal.
         </p>
       </div>
 
       <Card className="p-5">
-        <p className="text-xs uppercase tracking-wide text-slate-500">Total unaccounted units (open)</p>
+        <p className="text-xs uppercase tracking-wide text-ink-500">Total unaccounted units (open)</p>
         <p className="mt-1 text-4xl font-bold tracking-tight text-red-700">
           {data?.totalUnaccounted ?? 0}
         </p>

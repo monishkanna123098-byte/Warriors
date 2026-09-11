@@ -66,7 +66,7 @@ export default function FacilityPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight">Inbound disposals</h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-ink-700">
           Common biomedical waste facilities receive by weight and incinerate in bulk; they do not
           record batch numbers. What this screen adds is a quantity ceiling that over-declaration
           cannot pass.
@@ -91,17 +91,17 @@ export default function FacilityPage() {
             />
             <div className="space-y-5 px-5 py-5">
               <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Certificate allocation</p>
+                <p className="text-xs uppercase tracking-wide text-ink-500">Certificate allocation</p>
                 <div className="mt-2">
                   <StackedBar
                     total={d.confirmedQty}
                     segments={[
-                      { label: "allocated", value: d.alreadyAllocated, className: "bg-slate-700" },
+                      { label: "allocated", value: d.alreadyAllocated, className: "bg-ink-700" },
                       { label: "eligible", value: Math.max(0, d.eligible), className: "bg-emerald-500" },
                     ]}
                   />
                 </div>
-                <p className="mt-2 text-sm text-slate-700">
+                <p className="mt-2 text-sm text-ink-700">
                   Confirmed <strong>{d.confirmedQty}</strong> · already allocated{" "}
                   <strong>{d.alreadyAllocated}</strong> · eligible{" "}
                   <strong className="text-emerald-700">{d.eligible}</strong>
@@ -134,14 +134,14 @@ export default function FacilityPage() {
               )}
 
               {d.certificates.length > 0 ? (
-                <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Issued</p>
+                <div className="rounded-md border border-line bg-sunken px-4 py-3">
+                  <p className="text-xs uppercase tracking-wide text-ink-500">Issued</p>
                   {d.certificates.map((c) => (
-                    <p key={c.id} className="mt-1 font-mono text-xs text-slate-800">
+                    <p key={c.id} className="mt-1 font-mono text-xs text-ink-900">
                       {c.certNo} — {c.qty} units
                     </p>
                   ))}
-                  <p className="mt-2 text-xs text-slate-600">
+                  <p className="mt-2 text-xs text-ink-700">
                     The audit chain proves this record was not altered afterwards. It does not prove
                     physical destruction occurred.
                   </p>

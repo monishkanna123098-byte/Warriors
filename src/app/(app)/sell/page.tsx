@@ -95,7 +95,7 @@ export default function SellPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight">Dispense and issue a receipt</h1>
-        <p className="mt-1 max-w-2xl text-sm text-slate-600">
+        <p className="mt-1 max-w-2xl text-sm text-ink-700">
           Every line goes through the same checks as the POS terminal. If one line fails, the
           whole sale is refused — a receipt for medicine the system would not sell is worse than
           no receipt at all.
@@ -125,9 +125,9 @@ export default function SellPage() {
                 {bill.lines.map((l, i) => (
                   <tr key={i}>
                     <Td className="font-medium">{l.product}</Td>
-                    <Td className="text-slate-600">
+                    <Td className="text-ink-700">
                       {l.manufacturer}
-                      <span className="block font-mono text-xs text-slate-500">
+                      <span className="block font-mono text-xs text-ink-500">
                         {l.manufacturerLicenseNo}
                       </span>
                     </Td>
@@ -137,7 +137,7 @@ export default function SellPage() {
                   </tr>
                 ))}
               </Table>
-              <p className="mt-3 text-xs text-slate-500">
+              <p className="mt-3 text-xs text-ink-500">
                 No price appears on this receipt. RCCP records what was dispensed and from which
                 batch — it is not a billing system, and a receipt carrying money would invite
                 someone to treat it as one.
@@ -145,7 +145,7 @@ export default function SellPage() {
             </div>
             <div className="shrink-0 text-center">
               <BillQR token={bill.token} />
-              <p className="mt-2 max-w-[148px] text-xs text-slate-600">
+              <p className="mt-2 max-w-[148px] text-xs text-ink-700">
                 Scan to check this medicine at any time. The code resolves to the live record,
                 not to a copy printed today.
               </p>
@@ -188,7 +188,11 @@ export default function SellPage() {
             </div>
           ))}
 
-          <div className="flex gap-3">
+          {/* flex-wrap, not flex: both buttons refuse to wrap their own labels
+              (a two-line button reads as broken), so the ROW has to be what
+              gives at 320px. Without it the pair is ~438px wide and scrolls the
+              whole page sideways. */}
+          <div className="flex flex-wrap gap-3">
             <Button variant="ghost" onClick={() => setLines((ls) => [...ls, { ...BLANK }])}>
               Add another medicine
             </Button>
@@ -214,10 +218,10 @@ export default function SellPage() {
                 i.registryStatus === "CLEAN" &&
                 i.expiryState !== "RETURN_DUE";
               return (
-                <tr key={i.batchId} className={sellable ? undefined : "bg-slate-50"}>
+                <tr key={i.batchId} className={sellable ? undefined : "bg-sunken"}>
                   <Td className="font-mono">{i.batchNo}</Td>
                   <Td>{i.product}</Td>
-                  <Td className="font-mono text-xs text-slate-600">{i.manufacturerLicenseNo}</Td>
+                  <Td className="font-mono text-xs text-ink-700">{i.manufacturerLicenseNo}</Td>
                   <Td className="tabular-nums">{i.qty}</Td>
                   <Td>
                     {sellable ? null : (

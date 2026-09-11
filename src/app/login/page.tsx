@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { post, ApiFailure } from "@/lib/client";
-import { Button, Card, ErrorBanner, Field, Input } from "@/components/ui";
+import { Button, Card, ErrorBanner, Field, Input, Select } from "@/components/ui";
 
 const DEMO_USERS = [
   ["reta@annanagar.example", "Anna Nagar Medicals — retailer"],
@@ -50,40 +51,87 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6">
-      <h1 className="text-2xl font-bold tracking-tight">RCCP</h1>
-      <p className="mt-1 text-sm text-slate-600">
-        Pharma reverse chain compliance — retail shelf to verified destruction.
-      </p>
+    <div className="relative flex min-h-screen flex-col justify-center px-5 py-12 sm:px-6">
+      {/* Same decorative ground as the landing hero, so signing in feels like
+          part of the same product rather than a different application. */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+        <div className="absolute inset-0 bg-dots opacity-[0.45]" />
+        <div className="absolute -left-32 -top-32 h-[26rem] w-[26rem] rounded-full bg-pine-100/50 blur-3xl" />
+        <div className="absolute -bottom-40 -right-24 h-[24rem] w-[24rem] rounded-full bg-clay-50/60 blur-3xl" />
+      </div>
 
-      <Card className="mt-6 p-5">
-        <form onSubmit={submit} className="space-y-4">
-          <Field label="Sign in as">
-            <select
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
-            >
-              {DEMO_USERS.map(([v, l]) => (
-                <option key={v} value={v}>
-                  {l}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Password">
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-          </Field>
-          <ErrorBanner error={error} />
-          <Button type="submit" disabled={busy} className="w-full">
-            {busy ? "Signing in…" : "Sign in"}
-          </Button>
-        </form>
-      </Card>
+      <div className="mx-auto w-full max-w-[25rem] animate-rise">
+        <Link href="/" className="inline-flex items-center gap-2.5 text-pine-700">
+          <svg viewBox="0 0 28 28" className="h-7 w-7" aria-hidden="true" focusable="false">
+            <rect x="2" y="5" width="24" height="3.2" rx="1.6" fill="currentColor" opacity="0.9" />
+            <rect x="2" y="12.4" width="17" height="3.2" rx="1.6" fill="currentColor" opacity="0.55" />
+            <rect x="2" y="19.8" width="10" height="3.2" rx="1.6" fill="currentColor" opacity="0.3" />
+            <path d="M15.5 24.5 L26 15" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" opacity="0.9" />
+          </svg>
+          <span className="font-display text-xl font-bold tracking-tight text-ink-900">RCCP</span>
+        </Link>
 
-      <p className="mt-4 text-center text-xs text-slate-500">
-        Seed password for every demo account is <code className="font-mono">demo1234</code>.
-      </p>
+        <h1 className="mt-6 font-display text-display-sm font-semibold text-ink-900">
+          Sign in to the demo
+        </h1>
+        <p className="mt-2 text-[15px] leading-relaxed text-ink-700">
+          Six roles see the same events from their own side. Pick one — every account uses the
+          same password.
+        </p>
+
+        <Card className="mt-7 p-6 shadow-panel">
+          <form onSubmit={submit} className="space-y-4">
+            <Field label="Sign in as">
+              <Select value={email} onChange={(e) => setEmail(e.target.value)}>
+                {DEMO_USERS.map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Password">
+              <Input
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </Field>
+            <ErrorBanner error={error} />
+            <Button type="submit" disabled={busy} className="w-full py-2.5">
+              {busy ? (
+                <>
+                  <span
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                  />
+                  Signing in…
+                </>
+              ) : (
+                "Sign in"
+              )}
+            </Button>
+          </form>
+        </Card>
+
+        <p className="mt-5 text-center text-[13px] text-ink-500">
+          Password for every demo account is{" "}
+          <code className="rounded bg-sunken px-1.5 py-0.5 font-mono text-[12px] text-ink-700">
+            demo1234
+          </code>
+        </p>
+
+        <div className="mt-8 rounded-card border border-line bg-surface/70 p-4 backdrop-blur-sm">
+          <p className="text-[13px] leading-relaxed text-ink-700">
+            Checking a medicine needs no account at all.{" "}
+            <Link href="/verify/MFG-TN-001/B-1001" className="font-medium text-pine-700 underline underline-offset-2 hover:text-pine-600">
+              Try the public check
+            </Link>
+            .
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

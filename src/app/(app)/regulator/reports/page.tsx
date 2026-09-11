@@ -32,7 +32,7 @@ export default function ReportsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight">Public reports</h1>
-        <p className="mt-1 max-w-2xl text-sm text-slate-600">
+        <p className="mt-1 max-w-2xl text-sm text-ink-700">
           Submitted from the public verify page with no account. Treated as evidence to look
           into — never as a finding against the medicine or the pharmacy.
         </p>
@@ -61,7 +61,7 @@ export default function ReportsPage() {
                 <Td className="font-medium">
                   {r.rawBatchNo}
                   {r.resolved ? (
-                    <span className="block text-xs text-slate-500">
+                    <span className="block text-xs text-ink-500">
                       {r.product} · {r.manufacturer}
                     </span>
                   ) : (
@@ -71,14 +71,14 @@ export default function ReportsPage() {
                   )}
                 </Td>
                 <Td className="font-mono text-xs">{r.reason}</Td>
-                <Td className="max-w-md text-slate-700">{r.description ?? "—"}</Td>
-                <Td className="text-slate-600">{r.location ?? "—"}</Td>
-                <Td className="text-xs text-slate-500">{r.createdAt.slice(0, 16).replace("T", " ")}</Td>
+                <Td className="max-w-md text-ink-700">{r.description ?? "—"}</Td>
+                <Td className="text-ink-700">{r.location ?? "—"}</Td>
+                <Td className="text-xs text-ink-500">{r.createdAt.slice(0, 16).replace("T", " ")}</Td>
               </tr>
             ))}
           </Table>
         )}
-        <p className="border-t border-slate-200 px-5 py-3 text-xs text-slate-600">
+        <p className="border-t border-line px-5 py-3 text-xs text-ink-700">
           {data?.caveat ?? "A citizen report is evidence, not a finding."} A report naming a batch
           number that appears on no register is kept deliberately — rejecting it for failing to
           match would discard exactly the counterfeit signal it raises.
