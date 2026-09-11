@@ -14,7 +14,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { PrismaClient } from "@prisma/client";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { executeTransfer, isAuthorizedRoute, transferDestinations } from "./transfer";
+import { executeTransfer, isAuthorizedRoute, transferDestinations, transferSources } from "./transfer";
 import { AppError } from "./errors";
 import type { Tx } from "./db";
 import { AlertCode, LedgerEvent, RegistryStatus, Severity } from "./types";
@@ -502,5 +502,95 @@ describe("transfer.ts module boundaries", () => {
 
   it("never updates or deletes a ledger row (CLAUDE.md rule 4)", () => {
     expect(src).not.toMatch(/batchLedger\s*\.\s*(update|delete|upsert)/);
+  });
+});
+
+describe("transferSources — what an organisation can actually dispatch", () => {
+  it("reports the units held, not the units issued", async () => {
+    const out = await inRollback(async (tx) => {
+      const f = await fixture(tx, { issued: 1000 });
+      await executeTransfer(tx, f.actor, { batchId: f.batch.id, toOrgId: f.dist.id, qty: 400 });
+      const mine = await transferSources(tx, f.mfg.id);
+      return mine.find((b) => b.batchId === f.batch.id);
+    });
+    // Issued 1000, sent 400 — the picker must say 600, not 1000.
+    expect(out?.available).toBe(600);
+    expect(out?.blockedReason).toBeNull();
+  });
+
+  it("blocks a batch whose stock has all been sent on", async () => {
+    const out = await inRollback(async (tx) => {
+      const f = await fixture(tx, { issued: 100 });
+      await executeTransfer(tx, f.actor, { batchId: f.batch.id, toOrgId: f.dist.id, qty: 100 });
+      const mine = await transferSources(tx, f.mfg.id);
+      return mine.find((b) => b.batchId === f.batch.id);
+    });
+    expect(out?.available).toBe(0);
+    expect(out?.blockedReason).toMatch(/no units held/i);
+  });
+
+  it("blocks a certified-destroyed batch even though units are on its ledger", async () => {
+    const out = await inRollback(async (tx) => {
+      const f = await fixture(tx, { registryStatus: RegistryStatus.DESTROYED, issued: 500 });
+      const mine = await transferSources(tx, f.mfg.id);
+      return mine.find((b) => b.batchId === f.batch.id);
+    });
+    // This is the case the picker used to offer silently: a positive balance,
+    // and a guaranteed 409 on submit.
+    expect(out?.available).toBeGreaterThan(0);
+    expect(out?.blockedReason).toMatch(/destroyed/i);
+  });
+
+  it("marks held and recalled stock as flagged rather than blocked", async () => {
+    const out = await inRollback(async (tx) => {
+      const held = await fixture(tx, { registryStatus: RegistryStatus.HELD });
+      const recalled = await fixture(tx, { registryStatus: RegistryStatus.RECALLED });
+      const a = await transferSources(tx, held.mfg.id);
+      const b = await transferSources(tx, recalled.mfg.id);
+      return {
+        held: a.find((x) => x.batchId === held.batch.id),
+        recalled: b.find((x) => x.batchId === recalled.batch.id),
+      };
+    });
+    // Pulling recalled stock back off a shelf is the correct response to a
+    // recall, so it must stay sendable.
+    expect(out.held?.blockedReason).toBeNull();
+    expect(out.held?.flagged).toBe(RegistryStatus.HELD);
+    expect(out.recalled?.blockedReason).toBeNull();
+    expect(out.recalled?.flagged).toBe(RegistryStatus.RECALLED);
+  });
+
+  it("agrees with what executeTransfer will actually allow", async () => {
+    const out = await inRollback(async (tx) => {
+      const f = await fixture(tx, { issued: 250 });
+      const mine = await transferSources(tx, f.mfg.id);
+      const available = mine.find((b) => b.batchId === f.batch.id)!.available;
+
+      // Exactly the advertised amount must succeed...
+      const ok = await executeTransfer(tx, f.actor, {
+        batchId: f.batch.id,
+        toOrgId: f.dist.id,
+        qty: available,
+      });
+      // ...and one more than it must not.
+      let err: unknown;
+      try {
+        await executeTransfer(tx, f.actor, { batchId: f.batch.id, toOrgId: f.dist.id, qty: 1 });
+      } catch (e) {
+        err = e;
+      }
+      return { available, after: ok.senderBalanceAfter, err };
+    });
+    expect(out.available).toBe(250);
+    expect(out.after).toBe(0);
+    expect((out.err as AppError).code).toBe(AlertCode.LOCATION_QUANTITY_BREACH);
+  });
+
+  it("lists nothing for an organisation that has never held stock", async () => {
+    const out = await inRollback(async (tx) => {
+      const f = await fixture(tx);
+      return transferSources(tx, f.ret.id);
+    });
+    expect(out).toEqual([]);
   });
 });

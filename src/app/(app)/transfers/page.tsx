@@ -38,35 +38,37 @@ interface Destination {
   /** Whether an authorised route covers this sender -> receiver pair. */
   authorized: boolean;
 }
-interface BatchRow {
-  id: string;
+interface Source {
+  batchId: string;
   batchNo: string;
   product: string;
+  manufacturer: string;
   registryStatus: string;
+  /** Units this organisation actually holds — the I7 balance. */
+  available: number;
+  /** Set when a transfer would be refused outright. */
+  blockedReason: string | null;
+  /** Set when it would be recorded but flagged: HELD or RECALLED. */
+  flagged: string | null;
 }
 
 export default function TransfersPage() {
-  const feed = useApi<{ items: TransferRow[]; destinations: Destination[] }>("/api/transfers");
-  const inventory = useApi<{ items: { batchId: string; batchNo: string; product: string; qty: number }[] }>(
-    "/api/inventory",
-  );
-
-  // A manufacturer dispatches from its own register; everyone else from what is
-  // physically on their shelf. Asking for the register regardless worked — the
-  // page fell back to inventory on the 403 — but it fired a forbidden request on
-  // every load for every retailer and distributor, which logs a console error
-  // and reads as a bug to anyone with devtools open.
-  const me = useApi<{ organization: { type: string } }>("/api/me");
-  const canReadRegister =
-    me.data?.organization.type === "MANUFACTURER" || me.data?.organization.type === "REGULATOR";
-  const batches = useApi<{ items: BatchRow[] }>(canReadRegister ? "/api/batches" : null);
+  const feed = useApi<{
+    items: TransferRow[];
+    destinations: Destination[];
+    sources: Source[];
+  }>("/api/transfers");
 
   const [batchId, setBatchId] = useState("");
   const [toOrgId, setToOrgId] = useState("");
   const [qty, setQty] = useState("100");
   const [note, setNote] = useState("");
   const [error, setError] = useState<ApiError | null>(null);
-  const [result, setResult] = useState<{ message: string; authorized: boolean; senderBalanceAfter: number } | null>(null);
+  const [result, setResult] = useState<{
+    message: string;
+    authorized: boolean;
+    senderBalanceAfter: number;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const destinations = feed.data?.destinations ?? [];
@@ -74,13 +76,16 @@ export default function TransfersPage() {
   const offRoute = destinations.filter((d) => !d.authorized);
   const chosenDestination = destinations.find((d) => d.id === toOrgId) ?? null;
 
-  const options =
-    (batches.data?.items ?? []).length > 0
-      ? (batches.data?.items ?? []).map((b) => ({ id: b.id, label: `${b.batchNo} — ${b.product}` }))
-      : (inventory.data?.items ?? []).map((i) => ({
-          id: i.batchId,
-          label: `${i.batchNo} — ${i.product} (${i.qty} on hand)`,
-        }));
+  // One picker for every role. A manufacturer dispatches from its register and a
+  // pharmacy from its shelf, but both are the same question — what does this
+  // organisation hold — and the ledger answers it the same way for both.
+  const sources = feed.data?.sources ?? [];
+  const sendable = sources.filter((b) => !b.blockedReason);
+  const unsendable = sources.filter((b) => b.blockedReason);
+  const chosenBatch = sources.find((b) => b.batchId === batchId) ?? null;
+
+  const overAvailable =
+    chosenBatch !== null && Number(qty) > chosenBatch.available;
 
   async function submit() {
     setBusy(true);
@@ -93,7 +98,8 @@ export default function TransfersPage() {
       );
       setResult(r);
       setNote("");
-      await Promise.all([feed.reload(), inventory.reload()]);
+      setBatchId("");
+      await feed.reload();
     } catch (e) {
       setError(e instanceof ApiFailure ? e.error : { code: "CONFLICT", message: String(e) });
     } finally {
@@ -130,14 +136,30 @@ export default function TransfersPage() {
           ) : null}
 
           <div className="grid gap-4 sm:grid-cols-3">
-            <Field label="Batch">
+            <Field
+              label="Batch"
+              hint={chosenBatch ? `${chosenBatch.available.toLocaleString()} units held here.` : undefined}
+            >
               <Select value={batchId} onChange={(e) => setBatchId(e.target.value)}>
                 <option value="">Choose…</option>
-                {options.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label}
-                  </option>
-                ))}
+                {sendable.length > 0 ? (
+                  <optgroup label="Available to send">
+                    {sendable.map((b) => (
+                      <option key={b.batchId} value={b.batchId}>
+                        {b.batchNo} — {b.product} ({b.available.toLocaleString()} held)
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
+                {unsendable.length > 0 ? (
+                  <optgroup label="Cannot be sent">
+                    {unsendable.map((b) => (
+                      <option key={b.batchId} value={b.batchId} disabled>
+                        {b.batchNo} — {b.blockedReason}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
               </Select>
             </Field>
             <Field
@@ -171,9 +193,53 @@ export default function TransfersPage() {
               </Select>
             </Field>
             <Field label="Quantity">
-              <Input value={qty} onChange={(e) => setQty(e.target.value)} inputMode="numeric" />
+              <Input
+                value={qty}
+                onChange={(e) => setQty(e.target.value)}
+                inputMode="numeric"
+                aria-invalid={overAvailable || undefined}
+              />
             </Field>
           </div>
+
+          {overAvailable && chosenBatch ? (
+            <div className="flex gap-3 rounded-card border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+              <svg viewBox="0 0 20 20" className="mt-0.5 h-4 w-4 shrink-0 text-red-600" fill="none" stroke="currentColor" strokeWidth="1.6">
+                <circle cx="10" cy="10" r="7.5" />
+                <path d="M10 6.5v4.5" strokeLinecap="round" />
+                <circle cx="10" cy="13.6" r="0.9" fill="currentColor" stroke="none" />
+              </svg>
+              <div>
+                <p className="font-medium">
+                  {chosenBatch.batchNo} has {chosenBatch.available.toLocaleString()} units here, not{" "}
+                  {Number(qty).toLocaleString()}.
+                </p>
+                <p className="mt-1 leading-relaxed">
+                  I7 refuses a transfer that would take a location&rsquo;s balance below zero, so
+                  this would be rejected rather than recorded.
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          {chosenBatch?.flagged ? (
+            <div className="flex gap-3 rounded-card border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <svg viewBox="0 0 20 20" className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" fill="none" stroke="currentColor" strokeWidth="1.6">
+                <path d="M10 3.2 18 16.8H2z" strokeLinejoin="round" />
+                <path d="M10 8.4v3.4" strokeLinecap="round" />
+                <circle cx="10" cy="14.2" r="0.85" fill="currentColor" stroke="none" />
+              </svg>
+              <div>
+                <p className="font-medium">
+                  {chosenBatch.batchNo} is {chosenBatch.flagged === "RECALLED" ? "recalled" : "under a regulator hold"}.
+                </p>
+                <p className="mt-1 leading-relaxed">
+                  Moving it is still recorded — pulling stock back off a shelf is the correct
+                  response to a recall — but it raises an alert showing which direction it went.
+                </p>
+              </div>
+            </div>
+          ) : null}
 
           {chosenDestination && !chosenDestination.authorized ? (
             <div className="flex gap-3 rounded-card border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -197,13 +263,17 @@ export default function TransfersPage() {
             <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Weekly replenishment" />
           </Field>
 
-          <Button onClick={submit} disabled={busy || !batchId || !toOrgId || Number(qty) < 1}>
+          <Button
+            onClick={submit}
+            disabled={busy || !batchId || !toOrgId || Number(qty) < 1 || overAvailable}
+          >
             {busy ? "Recording…" : "Record transfer"}
           </Button>
 
-          {!feed.loading && destinations.length === 0 ? (
+          {!feed.loading && sendable.length === 0 ? (
             <p className="text-sm text-ink-500">
-              There are no other organisations in the network to dispatch to.
+              This organisation holds no stock it can dispatch. Batches arrive here through a
+              transfer in, or — for a manufacturer — by registering a batch.
             </p>
           ) : null}
         </div>

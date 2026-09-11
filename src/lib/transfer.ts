@@ -16,8 +16,8 @@
 import type { Tx } from "./db";
 import { appendAudit } from "./audit";
 import { badRequest, conflict } from "./errors";
-import { checkExistence, checkLocationBalance } from "./invariants";
-import { eventSums } from "./ledger";
+import { checkExistence, checkLocationBalance, locationBalance } from "./invariants";
+import { eventSums, eventSumsByBatch } from "./ledger";
 import {
   AlertCode,
   InventoryStatus,
@@ -303,4 +303,65 @@ export async function transferDestinations(tx: Tx, fromOrgId: string) {
   return out.sort(
     (a, b) => Number(b.authorized) - Number(a.authorized) || a.name.localeCompare(b.name),
   );
+}
+
+/**
+ * Batches this organisation can dispatch, each with how many units it actually
+ * holds and whether sending them will be refused or flagged.
+ *
+ * Without this the picker listed every batch in the register and said nothing,
+ * so a manufacturer could pick one that was certified destroyed, or one whose
+ * stock had already all been transferred out, and learn about it only from a red
+ * error after pressing the button. The information to prevent that was already
+ * in the ledger; it just was not being read.
+ *
+ * `available` is the I7 location balance — the same figure executeTransfer
+ * checks before it writes anything — so what the picker promises and what the
+ * service enforces cannot drift.
+ */
+export async function transferSources(tx: Tx, orgId: string) {
+  const sums = await eventSumsByBatch(tx, orgId);
+  if (sums.size === 0) return [];
+
+  const batches = await tx.batch.findMany({
+    where: { id: { in: [...sums.keys()] } },
+    include: { product: true, manufacturer: true },
+  });
+
+  return batches
+    .map((b) => {
+      const balance = locationBalance(sums.get(b.id) ?? {});
+      const status = b.registryStatus as RegistryStatus;
+
+      // A certified-destroyed batch cannot move again at all; everything else
+      // is a matter of how much is left.
+      const blockedReason =
+        status === RegistryStatus.DESTROYED
+          ? "Certified destroyed — stock bearing this number cannot be transferred"
+          : balance.balance <= 0
+            ? "No units held here"
+            : null;
+
+      return {
+        batchId: b.id,
+        batchNo: b.batchNo,
+        product: b.product.name,
+        manufacturer: b.manufacturer.name,
+        registryStatus: status,
+        available: Math.max(0, balance.balance),
+        blockedReason,
+        // Held and recalled stock still moves — pulling it back off a shelf is
+        // the correct response to a recall — but it raises an alert.
+        flagged:
+          status === RegistryStatus.HELD || status === RegistryStatus.RECALLED
+            ? status
+            : null,
+      };
+    })
+    .sort(
+      (a, b) =>
+        Number(!!a.blockedReason) - Number(!!b.blockedReason) ||
+        b.available - a.available ||
+        a.batchNo.localeCompare(b.batchNo),
+    );
 }

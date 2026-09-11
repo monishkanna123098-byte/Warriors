@@ -127,3 +127,28 @@ export async function eventSumsByOrg(
 export function transferredSum(tx: Tx, orgId: string, batchId: string): Promise<number> {
   return sum(tx, { batchId, orgId, eventType: LedgerEvent.TRANSFERRED });
 }
+
+/**
+ * Every event sum for one organisation, grouped by batch, in a single query.
+ *
+ * The per-batch alternative is one round trip per batch, which turns a dispatch
+ * picker listing a manufacturer's whole register into N queries before the page
+ * can render a dropdown.
+ */
+export async function eventSumsByBatch(
+  tx: Tx,
+  orgId: string,
+): Promise<Map<string, Partial<Record<LedgerEvent, number>>>> {
+  const rows = await tx.batchLedger.groupBy({
+    by: ["batchId", "eventType"],
+    where: { orgId },
+    _sum: { qtyDelta: true },
+  });
+  const out = new Map<string, Partial<Record<LedgerEvent, number>>>();
+  for (const r of rows) {
+    const sums = out.get(r.batchId) ?? {};
+    sums[r.eventType as LedgerEvent] = r._sum.qtyDelta ?? 0;
+    out.set(r.batchId, sums);
+  }
+  return out;
+}

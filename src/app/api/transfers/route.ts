@@ -2,7 +2,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { ok, parseBody, toResponse, withIdempotency } from "@/lib/http";
-import { executeTransfer, transferDestinations } from "@/lib/transfer";
+import { executeTransfer, transferDestinations, transferSources } from "@/lib/transfer";
 import { Role } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +20,7 @@ export async function GET() {
     const where =
       s.role === Role.REGULATOR ? {} : { OR: [{ fromOrgId: s.orgId }, { toOrgId: s.orgId }] };
 
-    const [rows, destinations] = await Promise.all([
+    const [rows, destinations, sources] = await Promise.all([
       prisma.transfer.findMany({
         where,
         include: {
@@ -32,6 +32,7 @@ export async function GET() {
         take: 100,
       }),
       s.role === Role.REGULATOR ? Promise.resolve([]) : transferDestinations(prisma, s.orgId),
+      s.role === Role.REGULATOR ? Promise.resolve([]) : transferSources(prisma, s.orgId),
     ]);
 
     return ok({
@@ -54,6 +55,10 @@ export async function GET() {
       // Each destination carries whether an authorised route covers it, so the
       // picker can offer it and say what will happen — rather than hiding it.
       destinations,
+      // Batches this organisation actually holds, with the quantity available
+      // and why a transfer would be refused or flagged — read from the ledger,
+      // so the picker and the service cannot disagree.
+      sources,
     });
   } catch (e) {
     return toResponse(e);
