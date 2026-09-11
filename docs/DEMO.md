@@ -221,3 +221,30 @@ from a stored row: ledger movements, alerts, receipts, holds, reports.
 Close on `/api/audit/verify` → `{ valid: true }`, and on the limitation: this
 proves the digital record was not altered after the fact. It does not prove what
 physically happened to stock nobody recorded.
+
+
+---
+
+## Printing the consumer QR codes
+
+The QR on a purchase receipt is normally shown on screen — on **Dispense +
+receipt** right after a sale, and on **Customer receipts** for any past one. For
+a printed handout, a slide, or a phone that cannot reach your laptop, render them
+as PNGs:
+
+```bash
+# against the deployment, so a phone can actually open them
+node scripts/bill-qr.mjs --base https://<your-app>.vercel.app
+```
+
+Three seeded receipts cover the three answers a consumer can get:
+
+| Receipt | Scanning it shows |
+|---|---|
+| `RCCP-20260908-001` | **VALID** — two manufacturers on one bill, one a single tablet |
+| `RCCP-20260909-002` | **RECALLED — DO NOT USE** |
+| `RCCP-20260714-003` | **EXPIRED — DO NOT USE** |
+
+The middle one is the demo: the receipt was issued *before* the recall and has
+not been reprinted. The paper did not change; the answer did. That is the whole
+argument for putting a token in the QR rather than the data.

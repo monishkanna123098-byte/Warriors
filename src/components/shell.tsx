@@ -32,6 +32,7 @@ const NAV: Record<string, NavGroup[]> = {
       items: [
         { href: "/pos", label: "POS terminal" },
         { href: "/sell", label: "Dispense + receipt" },
+        { href: "/customer-receipts", label: "Customer receipts" },
         { href: "/inventory", label: "Inventory" },
         { href: "/transfers", label: "Transfers" },
       ],
