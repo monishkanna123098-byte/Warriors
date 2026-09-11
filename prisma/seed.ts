@@ -602,7 +602,7 @@ async function main() {
     manufacturerRef: string,
     batchNo: string,
     batchId: string | null,
-    reason: "SUSPECTED_EXPIRED" | "SUSPECTED_COUNTERFEIT" | "SOLD_AFTER_RECALL",
+    reason: "SUSPECTED_EXPIRED" | "SUSPECTED_COUNTERFEIT" | "SOLD_AFTER_RECALL" | "PACKAGING_TAMPERED" | "ADVERSE_REACTION" | "OTHER",
     description: string,
     location: string,
   ) =>
@@ -655,6 +655,286 @@ async function main() {
     "Velachery, Chennai",
   );
 
+  // =====================================================================
+  // WIDER COVERAGE — the states the first pass left empty.
+  //
+  // From a clean database, ten of sixteen AlertCodes and five of eight
+  // ReturnStates had no rows at all: the return pipeline's entire middle was
+  // unrepresented, so a distributor or manufacturer opening "Inbound returns"
+  // saw nothing until they ran the flow themselves, and the regulator's alert
+  // feed was almost empty.
+  //
+  // Everything below is driven through the REAL services — transition(),
+  // issueHoldOrRecall(), executeTransfer() — so these are outcomes the running
+  // system produced, not rows describing outcomes it might produce.
+  //
+  // All organisations, people and products remain fictional.
+  // =====================================================================
+
+  // --- a network rather than a line -------------------------------------
+  const dist2 = await org("Madurai Pharma Distributors", "DISTRIBUTOR", "DL/TN/215", "Madurai");
+  const fac2 = await org("Kovai Waste Systems", "FACILITY", "BMW/TN/12", "Coimbatore");
+  const retF = await org("Madurai City Pharmacy", "RETAILER", "DL/TN/4406", "Madurai", dist2.id);
+  for (const [email, o, role] of [
+    ["dist2@maduraipharma.example", dist2, "DISTRIBUTOR"],
+    ["fac2@kovaiwaste.example", fac2, "FACILITY"],
+    ["retf@maduraicity.example", retF, "RETAILER"],
+  ] as const) {
+    await prisma.user.create({ data: { email, passwordHash, role, organizationId: o.id } });
+  }
+  await route(mfg1.id, dist2.id);
+  await route(mfg2.id, dist2.id);
+  await route(dist2.id, retF.id);
+
+  // --- one return parked at every stage of the pipeline ------------------
+  // Driven with transition(), so each row has the ledger entries, audit events
+  // and compliance receipts a real thread would have.
+  const stageBatch = async (batchNo: string, retailer: typeof retA, qty: number) => {
+    const b = await mkBatch(mfg1.id, batchNo, p3.id, qty * 3, "2026-07-31T00:00:00Z");
+    await led(b.id, mfg1.id, "ISSUED", qty * 3);
+    await supply(b.id, mfg1.id, retailer.id, qty);
+    await inv(retailer.id, b.id, qty);
+    const dist = retailer.mappedDistributorId ?? dist1.id;
+    const r = await prisma.returnRequest.create({
+      data: {
+        batchId: b.id,
+        retailerId: retailer.id,
+        distributorId: dist,
+        manufacturerId: mfg1.id,
+        state: "RETURN_DUE",
+        dueBy: new Date(b.expiryDate.getTime() + 30 * 24 * 36e5),
+      },
+    });
+    return { batch: b, ret: r, dist };
+  };
+
+  const actorFor = async (o: typeof retA) => {
+    const u = await prisma.user.findFirstOrThrow({ where: { organizationId: o.id } });
+    return { userId: u.id, orgId: o.id, role: "SEED" };
+  };
+
+  const step = (id: string, to: string, actor: { userId: string; orgId: string; role: string }, payload: object) =>
+    prisma.$transaction((tx) => transition(id, to as ReturnState, actor, payload as never, tx));
+
+  // PICKUP_ASSIGNED — the distributor has accepted it but not collected.
+  {
+    const t = await stageBatch("PKP-2101", retA, 80);
+    await step(t.ret.id, "INITIATED", await actorFor(retA), {
+      to: "INITIATED", declaredQty: 80, condition: "Sealed cartons, ambient storage",
+    });
+    await step(t.ret.id, "PICKUP_ASSIGNED", await actorFor(dist1), {
+      to: "PICKUP_ASSIGNED", pickupAt: new Date(Date.now() + 2 * 24 * 36e5),
+    });
+  }
+
+  // DISTRIBUTOR_RECEIVED — and the weight does not match the count, which is
+  // the only invariant with no evidence anywhere until now. Advisory: it raises
+  // WEIGHT_MISMATCH and does not block the handoff.
+  {
+    const t = await stageBatch("DRC-2102", retB, 120);
+    await step(t.ret.id, "INITIATED", await actorFor(retB), {
+      to: "INITIATED", declaredQty: 120, condition: "Loose strips in a carton",
+    });
+    await step(t.ret.id, "PICKUP_ASSIGNED", await actorFor(dist1), {
+      to: "PICKUP_ASSIGNED", pickupAt: daysAgo(3),
+    });
+    await step(t.ret.id, "DISTRIBUTOR_RECEIVED", await actorFor(dist1), {
+      to: "DISTRIBUTOR_RECEIVED",
+      scannedBatchNo: t.batch.batchNo,
+      receivedQty: 120,
+      // 120 tablets at 0.9g should weigh ~108g. 61g is far outside tolerance:
+      // the count says 120, the scale says roughly 68.
+      weightG: 61,
+    });
+  }
+
+  // MANUFACTURER_RECEIVED — back with the maker, disposal not yet scheduled.
+  {
+    const t = await stageBatch("MFR-2103", retC, 90);
+    await step(t.ret.id, "INITIATED", await actorFor(retC), {
+      to: "INITIATED", declaredQty: 90, condition: "Intact blister packs",
+    });
+    await step(t.ret.id, "PICKUP_ASSIGNED", await actorFor(dist1), { to: "PICKUP_ASSIGNED", pickupAt: daysAgo(9) });
+    await step(t.ret.id, "DISTRIBUTOR_RECEIVED", await actorFor(dist1), {
+      to: "DISTRIBUTOR_RECEIVED", scannedBatchNo: t.batch.batchNo, receivedQty: 90,
+    });
+    await step(t.ret.id, "MANUFACTURER_RECEIVED", await actorFor(mfg1), {
+      to: "MANUFACTURER_RECEIVED", receivedQty: 90,
+    });
+  }
+
+  // DISPOSAL_SCHEDULED, and STALLED — the facility never came. I8 at a later
+  // stage than STL-5150, so the stall list is not one shape repeated.
+  {
+    const t = await stageBatch("DSP-2104", retD, 140);
+    await step(t.ret.id, "INITIATED", await actorFor(retD), {
+      to: "INITIATED", declaredQty: 140, condition: "Boxed, awaiting collection",
+    });
+    await step(t.ret.id, "PICKUP_ASSIGNED", await actorFor(dist1), { to: "PICKUP_ASSIGNED", pickupAt: daysAgo(40) });
+    await step(t.ret.id, "DISTRIBUTOR_RECEIVED", await actorFor(dist1), {
+      to: "DISTRIBUTOR_RECEIVED", scannedBatchNo: t.batch.batchNo, receivedQty: 140,
+    });
+    await step(t.ret.id, "MANUFACTURER_RECEIVED", await actorFor(mfg1), {
+      to: "MANUFACTURER_RECEIVED", receivedQty: 140,
+    });
+    await step(t.ret.id, "DISPOSAL_SCHEDULED", await actorFor(mfg1), {
+      to: "DISPOSAL_SCHEDULED", facilityId: fac2.id, qty: 140, scheduledDate: daysAgo(25),
+    });
+    await prisma.$executeRaw`UPDATE "ReturnRequest" SET "updatedAt" = NOW() - INTERVAL '25 days' WHERE id = ${t.ret.id}`;
+  }
+
+  // FACILITY_RECEIVED — in the incinerator queue, no certificate yet.
+  {
+    const t = await stageBatch("FCR-2105", retE, 60);
+    await step(t.ret.id, "INITIATED", await actorFor(retE), {
+      to: "INITIATED", declaredQty: 60, condition: "Sealed",
+    });
+    await step(t.ret.id, "PICKUP_ASSIGNED", await actorFor(dist1), { to: "PICKUP_ASSIGNED", pickupAt: daysAgo(12) });
+    await step(t.ret.id, "DISTRIBUTOR_RECEIVED", await actorFor(dist1), {
+      to: "DISTRIBUTOR_RECEIVED", scannedBatchNo: t.batch.batchNo, receivedQty: 60,
+    });
+    await step(t.ret.id, "MANUFACTURER_RECEIVED", await actorFor(mfg1), { to: "MANUFACTURER_RECEIVED", receivedQty: 60 });
+    // Scheduling is what CREATES the DisposalRequest, so it has to happen
+    // before anything can look one up.
+    await step(t.ret.id, "DISPOSAL_SCHEDULED", await actorFor(mfg1), {
+      to: "DISPOSAL_SCHEDULED", facilityId: fac1.id, qty: 60, scheduledDate: daysAgo(4),
+    });
+    const dr = await prisma.disposalRequest.findFirstOrThrow({ where: { returnId: t.ret.id } });
+    await step(t.ret.id, "FACILITY_RECEIVED", await actorFor(fac1), {
+      to: "FACILITY_RECEIVED", disposalRequestId: dr.id,
+    });
+  }
+
+  // PARTIALLY CERTIFIED — a certificate for less than was confirmed. The return
+  // closes; the BATCH stays IN_RETURN_PIPELINE because units remain uncovered,
+  // which is the distinction SPEC §4 draws and the one people assume away.
+  {
+    const t = await stageBatch("PRT-2106", retF, 100);
+    await step(t.ret.id, "INITIATED", await actorFor(retF), {
+      to: "INITIATED", declaredQty: 100, condition: "Mixed cartons",
+    });
+    await step(t.ret.id, "PICKUP_ASSIGNED", await actorFor(dist2), { to: "PICKUP_ASSIGNED", pickupAt: daysAgo(11) });
+    await step(t.ret.id, "DISTRIBUTOR_RECEIVED", await actorFor(dist2), {
+      to: "DISTRIBUTOR_RECEIVED", scannedBatchNo: t.batch.batchNo, receivedQty: 100,
+    });
+    await step(t.ret.id, "MANUFACTURER_RECEIVED", await actorFor(mfg1), { to: "MANUFACTURER_RECEIVED", receivedQty: 100 });
+    await step(t.ret.id, "DISPOSAL_SCHEDULED", await actorFor(mfg1), {
+      to: "DISPOSAL_SCHEDULED", facilityId: fac2.id, qty: 100, scheduledDate: daysAgo(6),
+    });
+    const dr = await prisma.disposalRequest.findFirstOrThrow({ where: { returnId: t.ret.id } });
+    await step(t.ret.id, "FACILITY_RECEIVED", await actorFor(fac2), {
+      to: "FACILITY_RECEIVED", disposalRequestId: dr.id,
+    });
+    await step(t.ret.id, "CERTIFIED_DESTROYED", await actorFor(fac2), {
+      to: "CERTIFIED_DESTROYED", disposalRequestId: dr.id, qty: 65, // of 100 confirmed
+    });
+  }
+
+  // --- a recall that was lifted -----------------------------------------
+  // The strongest integrity claim in the product is that RECALLED -> CLEAN
+  // cannot happen without an actor, a reason and a hash. With no released order
+  // in the data, nobody can see it.
+  const cleared = await mkBatch(mfg2.id, "CLR-3301", p4.id, 700, "2028-09-30T00:00:00Z");
+  await led(cleared.id, mfg2.id, "ISSUED", 700);
+  await supply(cleared.id, mfg2.id, retC.id, 200);
+  await led(cleared.id, retC.id, "BILLED", 55);
+  await inv(retC.id, cleared.id, 145);
+  await prisma.$transaction((tx) =>
+    issueHoldOrRecall(tx, regActor, {
+      batchId: cleared.id,
+      action: "RECALL_ISSUED",
+      reason:
+        "Particulate matter reported in three sealed vials from the same shipment. Withdrawn pending laboratory analysis.",
+    }),
+  );
+  await prisma.$transaction((tx) =>
+    issueHoldOrRecall(tx, regActor, {
+      batchId: cleared.id,
+      action: "RELEASED",
+      reason:
+        "Laboratory analysis traced the particulate to a contaminated sampling swab, not the product. Recall lifted; stock may return to sale.",
+    }),
+  );
+
+  // --- a distributor whose books do not balance --------------------------
+  // A second I7 breach, with a different cause from Tambaram's: stock recorded
+  // as dispatched onward that was never recorded as arriving here. An
+  // inconsistency to reconcile, not a finding.
+  const skew = await mkBatch(mfg2.id, "SKW-0042", p4.id, 400, "2027-12-31T00:00:00Z");
+  await led(skew.id, mfg2.id, "ISSUED", 400);
+  await led(skew.id, dist2.id, "SUPPLIED", 80);
+  await led(skew.id, dist2.id, "TRANSFERRED", 130); // -50
+
+  // --- spare stock a pharmacy can actually move --------------------------
+  // Pharmacy-to-pharmacy lending is ordinary practice, and the product supports
+  // it: the movement is recorded and flagged off-route rather than refused. But
+  // with every seeded batch either sold down, returned or destroyed, a retailer
+  // had nothing left to dispatch and the screen looked broken rather than empty.
+  const spare = await mkBatch(mfg1.id, "SPR-8801", p5.id, 1_200, "2027-08-31T00:00:00Z");
+  await led(spare.id, mfg1.id, "ISSUED", 1_200);
+  for (const [r, qty, sold] of [
+    [retA, 260, 40],
+    [retB, 220, 55],
+    [retC, 180, 30],
+    [retD, 150, 25],
+    [retE, 120, 20],
+    [retF, 140, 35],
+  ] as const) {
+    await supply(spare.id, mfg1.id, r.id, qty);
+    await led(spare.id, r.id, "BILLED", sold);
+    await inv(r.id, spare.id, qty - sold);
+  }
+
+  // --- a backdated invoice, recorded as evidence -------------------------
+  // Raised ALONGSIDE a verdict and never as an input to one (CLAUDE.md rule 5).
+  await prisma.$transaction(async (tx) => {
+    const claimed = daysAgo(11);
+    await tx.posScan.create({
+      data: {
+        orgId: retF.id,
+        rawManufacturerRef: mfg1.licenseNo,
+        rawBatchNo: p9100.batchNo,
+        batchId: p9100.id,
+        qty: 12,
+        context: "SALE",
+        claimedInvoiceDate: claimed,
+        verdict: "ALLOW",
+      },
+    });
+    await tx.alert.create({
+      data: {
+        code: "BACKDATED_INVOICE",
+        severity: "MEDIUM",
+        batchId: p9100.id,
+        orgId: retF.id,
+        payload: {
+          claimedInvoiceDate: claimed.toISOString(),
+          hoursBackdated: 11 * 24,
+          note: "Evidence only. The sale was decided on the server clock.",
+        } as never,
+      },
+    });
+  });
+
+  // --- a consumer receipt whose medicine has since expired ---------------
+  // Bought in good faith while the batch was in date. The QR turns amber on its
+  // own, with nothing on the paper having changed and no demo control touched.
+  await consumerBill(retC, "RCCP-20260714-003", "demo-expired-bill-token-003", daysAgo(59), [
+    { batch: b2002, qty: 8, product: "Amoxicillin 500mg", mfg: mfg1 },
+  ]);
+
+  // --- more public reports, including a repeat against one batch ---------
+  await citizenReport(
+    mfg1.licenseNo, "DRC-2102", null, "PACKAGING_TAMPERED",
+    "The outer seal was already broken when the pharmacist handed it over.",
+    "Madurai",
+  );
+  await citizenReport(
+    mfg1.licenseNo, "B-9999", null, "SUSPECTED_COUNTERFEIT",
+    "Second person reporting this number. The strip has no batch printed on the foil at all.",
+    "Anna Nagar, Chennai",
+  );
+
   console.log("Seeded.");
   console.table({
     orgs: await prisma.organization.count(),
@@ -676,6 +956,8 @@ async function main() {
     holdsAndRecalls: await prisma.holdRecallOrder.count(),
     consumerBills: await prisma.consumerBill.count(),
     citizenReports: await prisma.citizenReport.count(),
+    returnStatesCovered: (await prisma.returnRequest.groupBy({ by: ["state"] })).length + "/8",
+    alertCodesCovered: (await prisma.alert.groupBy({ by: ["code"] })).length + "/16",
     login: `any email above / ${PASSWORD}`,
   });
 }

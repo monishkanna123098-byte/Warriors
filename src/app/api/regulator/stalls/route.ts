@@ -33,15 +33,30 @@ export async function GET() {
         retailer: true,
         distributor: true,
         manufacturer: true,
+        // The facility is NOT a party on ReturnRequest — it becomes involved
+        // only when a disposal is scheduled — so without this a stall waiting on
+        // the facility named nobody, which is the one thing this screen exists
+        // to do.
+        disposals: { orderBy: { createdAt: "desc" }, take: 1 },
       },
       orderBy: { updatedAt: "asc" },
     });
+
+    // Resolve the facility named on the most recent disposal for each return.
+    const facilityIds = [...new Set(rows.map((r) => r.disposals[0]?.facilityId).filter(Boolean))] as string[];
+    const facilities = facilityIds.length
+      ? await prisma.organization.findMany({ where: { id: { in: facilityIds } } })
+      : [];
+    const facilityById = new Map(facilities.map((f) => [f.id, f]));
 
     const owner = {
       RETAILER: (r: (typeof rows)[number]) => r.retailer,
       DISTRIBUTOR: (r: (typeof rows)[number]) => r.distributor,
       MANUFACTURER: (r: (typeof rows)[number]) => r.manufacturer,
-      FACILITY: () => null,
+      FACILITY: (r: (typeof rows)[number]) => {
+        const id = r.disposals[0]?.facilityId;
+        return id ? (facilityById.get(id) ?? null) : null;
+      },
     } as const;
 
     const items = rows

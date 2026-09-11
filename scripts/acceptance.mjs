@@ -190,7 +190,10 @@ async function main() {
     body: JSON.stringify({ receivedQty: 70 }),
   });
   const orgsFac = await api(MFG1, "/api/orgs?type=FACILITY");
-  const facilityId = orgsFac.body.items?.[0]?.id;
+  // Pinned by licence number, not by position. There is more than one facility
+  // and more than one distributor in the network now, and "whichever sorts
+  // first" is not a stable way to name the one an acceptance item means.
+  const facilityId = orgsFac.body.items?.find((o) => o.licenseNo === "BMW/TN/07")?.id;
   const a5disp = await api(MFG1, "/api/disposals", {
     method: "POST",
     body: JSON.stringify({
@@ -213,6 +216,12 @@ async function main() {
   // Must be the disposal for the return this run created. The facility also
   // holds seeded historical disposals, and those sort earlier by scheduledDate.
   const dr = inbound.body.items?.find((d) => d.returnId === rid);
+  if (!dr) {
+    throw new Error(
+      `A5/A6 setup: FAC-1 has no inbound disposal for return ${rid}. ` +
+        `Disposal was scheduled to facilityId=${facilityId}; check the facility licence pin above.`,
+    );
+  }
   await api(FAC1, `/api/disposals/${dr.id}/receive`, { method: "POST" });
 
   // ---------------------------------------------------------------- A6
@@ -592,7 +601,7 @@ async function main() {
 
   const orgs = (await api(MFG1, "/api/orgs")).body;
   const orgList = orgs.items ?? orgs.organizations ?? [];
-  const distId = orgList.find((o) => o.type === "DISTRIBUTOR")?.id;
+  const distId = orgList.find((o) => o.licenseNo === "DL/TN/210")?.id;
   const retAId = orgList.find((o) => o.licenseNo === "DL/TN/4401")?.id;
 
   const toDist = await api(MFG1, "/api/transfers", {
@@ -747,6 +756,14 @@ async function main() {
 
   // ---------------------------------------------------------------- D13
   // A sale the system would refuse must not produce a receipt for it.
+  // Snapshot first: the assertion is that THIS sale created no receipt, not
+  // that no receipt in the database mentions the batch. The pharmacy also holds
+  // a seeded historical receipt for B-2002 — bought legitimately before the
+  // batch expired — and that is exactly the consumer EXPIRED case the demo
+  // needs, so a test that forbids it is testing the wrong thing.
+  const billsBefore = await api(RETC, "/api/consumer-bills");
+  const idsBefore = new Set((billsBefore.body.items ?? []).map((b) => b.id));
+
   const badSale = await api(RETC, "/api/consumer-bills", {
     method: "POST",
     body: JSON.stringify({
@@ -757,15 +774,12 @@ async function main() {
     }),
   });
   const afterBad = await api(RETC, "/api/consumer-bills");
+  const newBills = (afterBad.body.items ?? []).filter((b) => !idsBefore.has(b.id));
   check(
     "D13",
     "an expired line refuses the whole bill — no receipt, and the good lines are rolled back too",
-    badSale.status === 400 &&
-      badSale.body.error?.code === "EXPIRED_SALE" &&
-      !(afterBad.body.items ?? []).some((b) =>
-        b.lines?.some((l) => l.batchNo === "B-2002"),
-      ),
-    { status: badSale.status, error: badSale.body.error },
+    badSale.status === 400 && badSale.body.error?.code === "EXPIRED_SALE" && newBills.length === 0,
+    { status: badSale.status, error: badSale.body.error, newBills: newBills.length },
   );
 
   // ---------------------------------------------------------------- D14
