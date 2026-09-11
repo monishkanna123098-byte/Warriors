@@ -261,16 +261,46 @@ export async function executeTransfer(
   };
 }
 
-/** Organisations a given org may legitimately transfer to, for the UI. */
-export async function authorizedDestinations(tx: Tx, fromOrgId: string) {
-  const [routes, mapped] = await Promise.all([
-    tx.authorizedRoute.findMany({ where: { fromOrgId } }),
-    tx.organization.findMany({ where: { mappedDistributorId: fromOrgId } }),
-  ]);
-  const ids = new Set([...routes.map((r) => r.toOrgId), ...mapped.map((o) => o.id)]);
-  if (ids.size === 0) return [];
-  return tx.organization.findMany({
-    where: { id: { in: [...ids] } },
-    orderBy: { name: "asc" },
+/**
+ * Counterparties this organisation can dispatch to, each marked with whether an
+ * authorised route covers it.
+ *
+ * It deliberately returns OFF-ROUTE organisations too, rather than only the
+ * authorised ones. `executeTransfer` records an unauthorised movement and raises
+ * UNAUTHORIZED_ROUTE instead of refusing it — because refusing would only push
+ * the stock off the books — so a picker that hides those destinations
+ * contradicts the service behind it. It also left a retailer with an empty
+ * dropdown and no explanation, since the authorised network runs
+ * manufacturer -> distributor -> retailer and nothing is routed FROM a retailer.
+ *
+ * Excluded: the organisation itself, the regulator (it holds no stock), and
+ * waste facilities (intake is a DisposalRequest, not a Transfer).
+ *
+ * `authorized` here is read from isAuthorizedRoute, the same function
+ * executeTransfer uses. This module still decides nothing of its own.
+ */
+export async function transferDestinations(tx: Tx, fromOrgId: string) {
+  const orgs = await tx.organization.findMany({
+    where: {
+      id: { not: fromOrgId },
+      type: { in: [OrgType.MANUFACTURER, OrgType.DISTRIBUTOR, OrgType.RETAILER] },
+    },
+    orderBy: [{ type: "asc" }, { name: "asc" }],
   });
+
+  const out = [];
+  for (const o of orgs) {
+    out.push({
+      id: o.id,
+      name: o.name,
+      type: o.type as OrgType,
+      licenseNo: o.licenseNo,
+      district: o.district,
+      authorized: await isAuthorizedRoute(tx, fromOrgId, o.id),
+    });
+  }
+  // Authorised routes first, then everything else, each alphabetical.
+  return out.sort(
+    (a, b) => Number(b.authorized) - Number(a.authorized) || a.name.localeCompare(b.name),
+  );
 }

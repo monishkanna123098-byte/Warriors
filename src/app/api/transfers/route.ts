@@ -2,12 +2,12 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { ok, parseBody, toResponse, withIdempotency } from "@/lib/http";
-import { authorizedDestinations, executeTransfer } from "@/lib/transfer";
+import { executeTransfer, transferDestinations } from "@/lib/transfer";
 import { Role } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-/** Transfers this organisation sent or received, plus where it may legitimately send. */
+/** Transfers this organisation sent or received, plus where it can dispatch to. */
 export async function GET() {
   try {
     const s = await requireRole(
@@ -31,7 +31,7 @@ export async function GET() {
         orderBy: { serverTs: "desc" },
         take: 100,
       }),
-      s.role === Role.REGULATOR ? Promise.resolve([]) : authorizedDestinations(prisma, s.orgId),
+      s.role === Role.REGULATOR ? Promise.resolve([]) : transferDestinations(prisma, s.orgId),
     ]);
 
     return ok({
@@ -51,13 +51,9 @@ export async function GET() {
         note: t.note,
         serverTs: t.serverTs.toISOString(),
       })),
-      destinations: destinations.map((o) => ({
-        id: o.id,
-        name: o.name,
-        type: o.type,
-        licenseNo: o.licenseNo,
-        district: o.district,
-      })),
+      // Each destination carries whether an authorised route covers it, so the
+      // picker can offer it and say what will happen — rather than hiding it.
+      destinations,
     });
   } catch (e) {
     return toResponse(e);

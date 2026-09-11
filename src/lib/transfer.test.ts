@@ -14,7 +14,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { PrismaClient } from "@prisma/client";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { executeTransfer, isAuthorizedRoute, authorizedDestinations } from "./transfer";
+import { executeTransfer, isAuthorizedRoute, transferDestinations } from "./transfer";
 import { AppError } from "./errors";
 import type { Tx } from "./db";
 import { AlertCode, LedgerEvent, RegistryStatus, Severity } from "./types";
@@ -431,13 +431,54 @@ describe("route authorisation", () => {
     expect(out.reversed).toBe(false);
   });
 
-  it("lists only destinations the sender may legitimately reach", async () => {
+  it("offers off-route destinations too, marked as such", async () => {
+    // executeTransfer RECORDS an unauthorised movement rather than refusing it,
+    // so a picker that hid those destinations would contradict the service — and
+    // it left a retailer with an empty dropdown, since the authorised network
+    // runs manufacturer -> distributor -> retailer and nothing routes FROM a
+    // retailer.
     const out = await inRollback(async (tx) => {
       const f = await fixture(tx);
-      const dests = await authorizedDestinations(tx, f.mfg.id);
-      return dests.map((d) => d.id);
+      return {
+        fromMfg: await transferDestinations(tx, f.mfg.id),
+        fromRetailer: await transferDestinations(tx, f.ret.id),
+      };
     });
-    expect(out).toHaveLength(1);
+
+    const dist = out.fromMfg.find((d) => d.type === "DISTRIBUTOR" && d.authorized);
+    expect(dist).toBeDefined();
+    // The retailer has no authorised route out at all, and must still be offered
+    // somewhere to send to.
+    expect(out.fromRetailer.length).toBeGreaterThan(0);
+    expect(out.fromRetailer.every((d) => d.authorized === false)).toBe(true);
+  });
+
+  it("puts authorised routes first so the safe choice is the obvious one", async () => {
+    const out = await inRollback(async (tx) => {
+      const f = await fixture(tx);
+      return (await transferDestinations(tx, f.mfg.id)).map((d) => d.authorized);
+    });
+    const firstUnauthorised = out.indexOf(false);
+    if (firstUnauthorised !== -1) {
+      expect(out.slice(firstUnauthorised).every((a) => a === false)).toBe(true);
+    }
+  });
+
+  it("never offers the sender itself, the regulator, or a waste facility", async () => {
+    const out = await inRollback(async (tx) => {
+      const f = await fixture(tx);
+      await tx.organization.create({
+        data: { name: uniq("REG"), type: "REGULATOR", licenseNo: uniq("R"), stateCode: "TN", district: "X" },
+      });
+      await tx.organization.create({
+        data: { name: uniq("FAC"), type: "FACILITY", licenseNo: uniq("F"), stateCode: "TN", district: "X" },
+      });
+      return { self: f.mfg.id, dests: await transferDestinations(tx, f.mfg.id) };
+    });
+    // A facility takes stock through a DisposalRequest, not a Transfer, and the
+    // regulator holds no stock at all.
+    expect(out.dests.some((d) => d.id === out.self)).toBe(false);
+    expect(out.dests.some((d) => d.type === "REGULATOR" || d.type === "FACILITY")).toBe(false);
   });
 });
 
